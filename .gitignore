@@ -1,0 +1,30 @@
+# OS
+.DS_Store
+
+# Node / Next.js
+node_modules/
+.next/
+*.tsbuildinfo
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Vercel
+.vercel/
+
+# Env / secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Heavy GIS data (kept out of git; backend runs on Vercel)
+backend/data/
+
+# Generated marketing video output
+extension/brag-output/
+
+# Leftover nested git dir (create-next-app scaffold), moved aside
+frontend/.git.disabled/

@@ -1,0 +1,12 @@
+# .vercelignore replaces .gitignore for deploys. The derived data files are gitignored
+# but MUST ship, so they are deliberately not listed here.
+.venv
+__pycache__
+*.pyc
+Makefile
+scripts/
+
+# Source KML/GeoJSON is only needed to rebuild the caches. The function loads
+# data/cache/<city>.pkl instead, which keeps ~150 MB out of a 250 MB bundle.
+data/raw/
+data/processed/*.geojson

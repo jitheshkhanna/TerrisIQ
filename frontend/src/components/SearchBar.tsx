@@ -1,0 +1,215 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { geocode, type GeocodeResult } from "@/lib/api";
+
+interface Props {
+  onSelect: (result: GeocodeResult) => void;
+  /** Search is biased to the selected city, so "MG Road" finds the right one. */
+  city?: string | null;
+  placeholder?: string;
+  /** Rendered at the left edge of the bar, e.g. the city picker. */
+  leading?: React.ReactNode;
+}
+
+// Category is a quiet label, not a colour-coded taxonomy. Colour on this screen is
+// reserved for risk, so nothing here competes with the hazard ramp.
+
+// Photon has no rate limit and answers in well under 200ms, so we can search as the
+// user types rather than making them wait a full second between keystrokes.
+const DEBOUNCE_MS = 220;
+
+export default function SearchBar({ onSelect, city, placeholder, leading }: Props) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<GeocodeResult[]>([]);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [active, setActive] = useState(-1);
+  const box = useRef<HTMLDivElement>(null);
+  // Choosing a result writes its name into the input. Without this guard that change
+  // re-triggers the search effect and the dropdown pops straight back open.
+  const skipSearch = useRef(false);
+  const listId = "place-suggestions";
+
+  const reset = () => {
+    setResults([]);
+    setExpanded(null);
+    setError(null);
+    setOpen(false);
+    setActive(-1);
+  };
+
+  const handleChange = (value: string) => {
+    setQuery(value);
+    if (value.trim().length < 2) reset();
+  };
+
+  const choose = (result: GeocodeResult) => {
+    skipSearch.current = true;
+    onSelect(result);
+    setQuery(result.label);
+    setResults([]);
+    setExpanded(null);
+    setOpen(false);
+    setActive(-1);
+  };
+
+  useEffect(() => {
+    if (skipSearch.current) {
+      skipSearch.current = false;
+      return;
+    }
+    const term = query.trim();
+    if (term.length < 2) return;
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setBusy(true);
+      setError(null);
+      try {
+        const body = await geocode(term, city, controller.signal);
+        setResults(body.results);
+        setExpanded(body.expanded);
+        setActive(-1);
+        setOpen(true);
+        if (body.results.length === 0) {
+          setError("Nothing found near Chennai. Try a locality, street or landmark.");
+        }
+      } catch (err) {
+        if ((err as Error)?.name === "AbortError") return;
+        setError(err instanceof Error ? err.message : "Search failed");
+      } finally {
+        setBusy(false);
+      }
+    }, DEBOUNCE_MS);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [query, city]);
+
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      if (box.current && !box.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
+  const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") {
+      setOpen(false);
+      return;
+    }
+    if (!open || results.length === 0) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActive((i) => (i + 1) % results.length);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActive((i) => (i <= 0 ? results.length - 1 : i - 1));
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      choose(results[active >= 0 ? active : 0]);
+    }
+  };
+
+  return (
+    <div ref={box} className="relative">
+      <div className="floating relative flex items-center">
+        {leading}
+        <div className="relative flex min-w-0 flex-1 items-center">
+        <svg
+          className="pointer-events-none absolute left-3.5 h-[18px] w-[18px] text-[var(--ink-muted)]"
+          viewBox="0 0 16 16" fill="none" aria-hidden
+        >
+          <circle cx="7" cy="7" r="4.6" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M10.6 10.6 14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+        <input
+          value={query}
+          onChange={(e) => handleChange(e.target.value)}
+          onKeyDown={onKeyDown}
+          onFocus={() => results.length > 0 && setOpen(true)}
+          placeholder={placeholder ?? "Bus stop, street, landmark, area"}
+          aria-label="Search a bus stop, street, landmark or area"
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={listId}
+          aria-autocomplete="list"
+          autoComplete="off"
+          className="min-h-[54px] w-full min-w-0 rounded-2xl border border-transparent bg-transparent
+                     py-3 pl-10 pr-12 text-[16px] text-[var(--ink)]
+                     placeholder:text-[var(--ink-muted)] focus:outline-none"
+        />
+        <div className="absolute right-3 flex items-center gap-2">
+          {busy && (
+            <span
+              className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--hairline)]
+                         border-t-[var(--ink-2)]"
+              aria-label="Searching"
+            />
+          )}
+          {query && !busy && (
+            <button
+              onClick={() => {
+                setQuery("");
+                reset();
+              }}
+              aria-label="Clear search"
+              className="flex h-9 w-9 items-center justify-center text-[20px] leading-none
+                         text-[var(--ink-muted)] transition hover:text-[var(--ink)]"
+            >
+              &times;
+            </button>
+          )}
+        </div>
+        </div>
+      </div>
+
+      {expanded && open && (
+        <p className="mt-2 px-1 text-[13px] text-[var(--ink-muted)]">
+          Looking for <span className="text-[var(--ink-2)]">{expanded}</span>
+        </p>
+      )}
+      {error && <p className="mt-2 px-1 text-[14px] text-[var(--ink-2)]">{error}</p>}
+
+      {open && results.length > 0 && (
+        <ul
+          id={listId}
+          role="listbox"
+          className="floating quiet-scroll rise absolute z-20 mt-2 max-h-[46vh] w-full
+                     overflow-auto py-1.5"
+        >
+          {results.map((result, index) => (
+            <li key={`${result.latitude},${result.longitude},${result.label}`} role="option"
+                aria-selected={index === active}>
+              <button
+                onMouseEnter={() => setActive(index)}
+                onClick={() => choose(result)}
+                className={`flex min-h-[56px] w-full items-start justify-between gap-3 px-4 py-3
+                            text-left transition-colors
+                            ${index === active ? "bg-[var(--plane)]" : ""}`}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-[16px] font-medium text-[var(--ink)]">
+                    {result.label}
+                  </span>
+                  {result.context && (
+                    <span className="mt-0.5 block truncate text-[13px] text-[var(--ink-muted)]">
+                      {result.context}
+                    </span>
+                  )}
+                </span>
+                <span className="eyebrow mt-1.5 shrink-0">{result.category}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}

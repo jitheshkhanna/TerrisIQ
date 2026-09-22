@@ -1,0 +1,5 @@
+# Extra dependencies for the data pipeline in scripts/ only. Not needed to serve the API,
+# so they stay out of the deployed bundle.
+-r requirements.txt
+requests==2.32.5
+kml2geojson==5.1.0

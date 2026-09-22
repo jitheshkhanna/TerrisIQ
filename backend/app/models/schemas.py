@@ -1,0 +1,129 @@
+"""Request/response models for the public API."""
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
+
+# Wide enough to cover every supported metro, from Ahmedabad in the west to Kolkata in
+# the east. A point outside any city's own bbox is rejected by the endpoint with a list
+# of what is covered, rather than silently scored against the wrong city.
+LAT_MIN, LAT_MAX = 8.0, 32.0
+LNG_MIN, LNG_MAX = 68.0, 92.0
+
+
+class RiskRequest(BaseModel):
+    latitude: float = Field(..., ge=LAT_MIN, le=LAT_MAX)
+    longitude: float = Field(..., ge=LNG_MIN, le=LNG_MAX)
+    city: Optional[str] = Field(
+        None, description="City slug. Inferred from the coordinates when omitted.")
+    address: Optional[str] = Field(None, max_length=400,
+                                   description="Optional label to echo back on the report")
+
+
+class ScoreComponent(BaseModel):
+    key: str
+    points: float
+    label: str
+
+
+class RiskScore(BaseModel):
+    score: int = Field(..., ge=0, le=100)
+    grade: str
+    band: str
+    verdict: str = Field(..., description="Plain language, e.g. 'Low risk'")
+    level: int = Field(..., ge=1, le=5, description="1 very low ... 5 very high")
+    basis: Optional[str] = Field(
+        None, description="What the score rests on, e.g. inundation_survey vs terrain_and_proxies")
+    confidence: str = Field(..., description="high | medium | low - data coverage at this point")
+    warnings: List[str] = []
+    facts: List[Dict[str, str]] = Field(
+        [], description="Five-word findings with a level: high|medium|low|good|info")
+    components: List[ScoreComponent] = []
+    details: Dict[str, Any] = {}
+
+
+class Administrative(BaseModel):
+    """GCC ward and zone, so a search in everyday language maps onto the nomenclature
+    that patta records, GCC applications and CMWSSB connections are filed against."""
+    ward: Optional[str] = None
+    zone: Optional[str] = None
+    zone_number: Optional[int] = None
+    summary: str
+    city: Optional[str] = None
+    city_name: Optional[str] = None
+    ward_number: Optional[str] = None
+    ward_name: Optional[str] = None
+    inside_gcc: bool = Field(..., description="Inside this city's corporation boundary")
+    basis: Optional[str] = None
+    ward_is_official: bool = Field(
+        True, description="False where the boundary comes from OSM, not the corporation")
+    nearest_zone: Optional[str] = None
+    nearest_zone_m: Optional[int] = None
+    note: Optional[str] = None
+
+
+class CityInfo(BaseModel):
+    slug: str
+    name: str
+    state: str
+    corporation: str
+    centre: Dict[str, float]
+    bbox: Dict[str, float]
+    depth: str = Field(..., description="deep | moderate | baseline - how much is known here")
+    layers: List[str]
+    scoreable_dimensions: List[str]
+    ward_label: str
+    zone_label: str
+    notes: Dict[str, Any] = {}
+
+
+class RiskResponse(BaseModel):
+    city: CityInfo
+    latitude: float
+    longitude: float
+    address: Optional[str] = None
+    administrative: Administrative
+    flood: RiskScore
+    contamination: Optional[RiskScore] = Field(
+        None, description="Null where the city maps no industrial or waste sources")
+    scarcity: Optional[RiskScore] = Field(
+        None, description="Null where the city publishes no groundwater evidence")
+    composite_score: int = Field(..., ge=0, le=100)
+    composite_grade: str
+    composite_band: str
+    verdict: str = Field(..., description="Plain-language headline, e.g. 'Low risk'")
+    level: int = Field(..., ge=1, le=5)
+    unadjusted_grade: str = Field(
+        ..., description="Grade from the raw weighted formula, before the severity floor")
+    grade_floor_applied: bool = False
+    grade_floor_reason: Optional[str] = None
+    evidence_ceiling_applied: bool = False
+    evidence_ceiling_reason: Optional[str] = None
+    severity_note: Optional[str] = None
+    confidence: str
+    summary: str
+    weights: Dict[str, float] = Field(
+        ..., description="Renormalised over the dimensions this city can actually score")
+    base_weights: Dict[str, float]
+    unavailable_dimensions: List[str] = []
+    coverage_note: Optional[str] = None
+    h3_cell: Optional[str] = None
+    cached: bool = False
+    generated_at: str
+    disclaimer: str
+
+
+class GeocodeResult(BaseModel):
+    label: str = Field(..., description="What the user searched for, e.g. '100 Feet Road'")
+    context: str = Field("", description="Where it is, e.g. 'Velachery, Chennai 600042'")
+    category: str = Field("Place", description="Locality / Street / Landmark / Station ...")
+    latitude: float
+    longitude: float
+    type: Optional[str] = None
+
+
+class GeocodeResponse(BaseModel):
+    query: str
+    expanded: Optional[str] = Field(
+        None, description="The rewritten query, when local shorthand was expanded")
+    source: str = "photon"
+    results: List[GeocodeResult]

@@ -1,0 +1,15 @@
+# Runtime dependencies. Kept deliberately lean: this same file is what Vercel installs
+# into the serverless function, where there is a 250 MB bundle budget.
+#
+# Notably absent: the WeasyPrint chain (pyphen, fontTools, cffi, tinycss2 ...). An early
+# attempt used WeasyPrint for the PDF before switching to ReportLab, and leaving those
+# packages pinned here cost ~30 MB of bundle for code nothing imports.
+fastapi==0.128.8
+pydantic==2.13.5
+uvicorn==0.34.0
+shapely==2.0.7
+pyproj==3.6.1
+numpy==2.0.2
+h3==4.4.2
+httpx==0.28.1
+reportlab==5.0.1

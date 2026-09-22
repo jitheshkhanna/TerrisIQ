@@ -1,0 +1,151 @@
+@import "tailwindcss";
+
+/* Design tokens.
+ *
+ * Every colour here was measured, not chosen by eye. The previous palette failed WCAG
+ * AA in ways that hurt exactly the readers this tool is for: the muted ink used on every
+ * small label sat at 3.50:1, the amber score number at 1.79:1, and white on the amber
+ * grade chip at 1.83:1 (effectively unreadable). Text tones are now darkened until they
+ * clear 4.5:1 on the surface; the bright status hues survive only as fills and marks,
+ * where dark ink sits on top of them.
+ */
+:root {
+  --surface: #fcfcfb;
+  --plane: #f4f4f1;
+
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-muted: #716f6b; /* 4.88:1 on surface, 4.55:1 on plane — was #898781 at 3.50:1 */
+
+  --hairline: #dedcd4;
+  --edge: #c9c7bf; /* a border you are meant to notice */
+  --ring: rgba(11, 11, 11, 0.12);
+
+  /* Fills and marks. Bright, and only ever carry dark ink on top. */
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d34949;
+
+  /* The same four as *text*, darkened until they clear 4.5:1. */
+  --good-text: #0a870a;
+  --warning-text: #986d0f;
+  --serious-text: #ac6042;
+  --critical-text: #d03b3b;
+
+  --shadow-card: 0 1px 2px rgba(11, 11, 11, 0.05), 0 10px 28px -10px rgba(11, 11, 11, 0.16);
+  --shadow-float: 0 1px 2px rgba(11, 11, 11, 0.07), 0 14px 36px -12px rgba(11, 11, 11, 0.22);
+
+  /* Nothing interactive is smaller than this. */
+  --tap: 44px;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  background: var(--plane);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Section labels. Bumped from 10px to 12px and given a passing tone: at 10px and
+   3.5:1 these were the least readable thing on the screen. */
+.eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--ring);
+  border-radius: 16px;
+  box-shadow: var(--shadow-card);
+}
+
+.floating {
+  background: var(--surface);
+  border: 1px solid var(--ring);
+  border-radius: 16px;
+  box-shadow: var(--shadow-float);
+}
+
+/* A visible focus ring everywhere, for keyboard and switch-control users. */
+:where(a, button, input, [tabindex]):focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.maplibregl-ctrl-group {
+  border-radius: 12px !important;
+  border: 1px solid var(--ring) !important;
+  box-shadow: var(--shadow-float) !important;
+  overflow: hidden;
+}
+.maplibregl-ctrl-group button {
+  width: 40px !important;
+  height: 40px !important;
+}
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid var(--hairline) !important;
+}
+.maplibregl-ctrl-attrib {
+  font-size: 11px !important;
+  background: rgba(252, 252, 251, 0.9) !important;
+}
+.maplibregl-ctrl-scale {
+  border-color: var(--edge) !important;
+  color: var(--ink-2) !important;
+  background: rgba(252, 252, 251, 0.9) !important;
+  font-size: 11px !important;
+  border-radius: 0 4px 4px 0;
+}
+
+.quiet-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--edge) transparent;
+}
+.quiet-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.quiet-scroll::-webkit-scrollbar-thumb {
+  background: var(--edge);
+  border-radius: 4px;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 0.22s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

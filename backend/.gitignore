@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+
+# Derived data - rebuild with `make data`
+data/raw/
+data/processed/
+data/spatial_cache.pkl
+data/elevation_cache.json
+.vercel
