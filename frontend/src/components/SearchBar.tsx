@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { geocode, type GeocodeResult } from "@/lib/api";
+import { geocode, isShortMapLink, parseLocationInput, type GeocodeResult } from "@/lib/api";
 
 interface Props {
   onSelect: (result: GeocodeResult) => void;
@@ -10,6 +10,10 @@ interface Props {
   placeholder?: string;
   /** Rendered at the left edge of the bar, e.g. the city picker. */
   leading?: React.ReactNode;
+  /** GPS "check where I am" action; the pin button shows when the field is empty. */
+  onUseLocation?: () => void;
+  /** True while the GPS fix is in flight, so the pin button shows a spinner. */
+  locating?: boolean;
 }
 
 // Category is a quiet label, not a colour-coded taxonomy. Colour on this screen is
@@ -19,7 +23,7 @@ interface Props {
 // user types rather than making them wait a full second between keystrokes.
 const DEBOUNCE_MS = 220;
 
-export default function SearchBar({ onSelect, city, placeholder, leading }: Props) {
+export default function SearchBar({ onSelect, city, placeholder, leading, onUseLocation, locating }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<GeocodeResult[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -63,6 +67,24 @@ export default function SearchBar({ onSelect, city, placeholder, leading }: Prop
     }
     const term = query.trim();
     if (term.length < 2) return;
+
+    // Pasted a Google Maps link or bare lat,lng? Use the exact pin — skip the geocoder.
+    const pinned = parseLocationInput(term);
+    if (pinned) {
+      setResults([pinned]);
+      setExpanded(null);
+      setError(null);
+      setActive(0);
+      setOpen(true);
+      setBusy(false);
+      return;
+    }
+    // A short share link hides its coordinates behind a redirect we can't follow here.
+    if (isShortMapLink(term)) {
+      reset();
+      setError("Open the short link, then paste the full google.com/maps URL from the address bar.");
+      return;
+    }
 
     const controller = new AbortController();
     const timer = setTimeout(async () => {
@@ -146,11 +168,11 @@ export default function SearchBar({ onSelect, city, placeholder, leading }: Prop
                      placeholder:text-[var(--ink-muted)] focus:outline-none"
         />
         <div className="absolute right-3 flex items-center gap-2">
-          {busy && (
+          {(busy || locating) && (
             <span
               className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--hairline)]
                          border-t-[var(--ink-2)]"
-              aria-label="Searching"
+              aria-label={locating ? "Finding your location" : "Searching"}
             />
           )}
           {query && !busy && (
@@ -164,6 +186,21 @@ export default function SearchBar({ onSelect, city, placeholder, leading }: Prop
                          text-[var(--ink-muted)] transition hover:text-[var(--ink)]"
             >
               &times;
+            </button>
+          )}
+          {!query && !busy && !locating && onUseLocation && (
+            <button
+              onClick={onUseLocation}
+              aria-label="Use my current location"
+              title="Use my current location"
+              className="flex h-9 w-9 items-center justify-center text-[var(--ink-muted)]
+                         transition hover:text-[var(--ink)]"
+            >
+              <svg viewBox="0 0 20 20" className="h-[19px] w-[19px]" fill="none" aria-hidden>
+                <circle cx="10" cy="10" r="3.4" stroke="currentColor" strokeWidth="1.6" />
+                <path d="M10 1.5v2.6M10 15.9v2.6M18.5 10h-2.6M4.1 10H1.5"
+                      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              </svg>
             </button>
           )}
         </div>

@@ -171,6 +171,100 @@ export function fullLabel(result: GeocodeResult): string {
   return result.context ? `${result.label}, ${result.context}` : result.label;
 }
 
+/**
+ * If the user pasted a Google Maps link or a bare "lat, lng", pull the exact
+ * coordinates out of it so we can score the pin directly — no geocoder, no guessing.
+ * Coordinates from a link the user pasted themselves are user-provided input, which is
+ * why this is fine where an extension auto-reading Maps was not. Returns null for
+ * ordinary place text (which then goes to the geocoder as before). Short share links
+ * (maps.app.goo.gl) carry no coordinates and must be resolved server-side first.
+ */
+export function parseLocationInput(raw: string): GeocodeResult | null {
+  const text = raw.trim();
+  if (!text) return null;
+
+  const ok = (lat: number, lng: number): GeocodeResult | null => {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+    return {
+      label: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+      context: "Pinned from a map link",
+      category: "Pinned location",
+      latitude: lat,
+      longitude: lng,
+      type: "pin",
+    };
+  };
+
+  // Bare "13.0416, 80.2339" (comma or whitespace separated).
+  const bare = text.match(/^(-?\d{1,3}(?:\.\d+)?)\s*[, ]\s*(-?\d{1,3}(?:\.\d+)?)$/);
+  if (bare) return ok(parseFloat(bare[1]), parseFloat(bare[2]));
+
+  if (!/^https?:\/\/|maps\.|google\.|goo\.gl/i.test(text)) return null;
+
+  // A selected place carries its exact coordinate as !3d<lat>!4d<lng> — prefer it.
+  const place = text.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/);
+  if (place) return ok(parseFloat(place[1]), parseFloat(place[2]));
+
+  // The @lat,lng,zoom viewport centre, present in most Maps URLs.
+  const at = text.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+  if (at) return ok(parseFloat(at[1]), parseFloat(at[2]));
+
+  // ?q=lat,lng / ?query=lat,lng / ?ll=lat,lng / ?daddr=lat,lng
+  const q = text.match(/[?&](?:q|query|ll|sll|daddr|center)=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+  if (q) return ok(parseFloat(q[1]), parseFloat(q[2]));
+
+  return null;
+}
+
+/** True for a Google Maps share link that hides its coordinates behind a redirect. */
+export function isShortMapLink(raw: string): boolean {
+  return /(?:maps\.app\.goo\.gl|goo\.gl\/maps|g\.co\/kgs)/i.test(raw.trim());
+}
+
+export interface ChatTurn {
+  role: "user" | "model";
+  text: string;
+}
+
+/** Compact, plain-text summary of a score — the only data the assistant is given, so it
+ *  answers about the exact location the user is looking at and can't wander off it. */
+export function riskContext(r: RiskResult): string {
+  const dim = (name: string, s: RiskScore | null) => {
+    if (!s) return `${name}: not scored for this city.`;
+    const facts = s.facts?.map((f) => f.text).filter(Boolean).join("; ");
+    return `${name}: ${s.verdict}${facts ? ` (${facts})` : ""}.`;
+  };
+  const lines = [
+    `Location: ${r.address || `${r.latitude.toFixed(4)}, ${r.longitude.toFixed(4)}`}.`,
+    `City: ${r.city?.name ?? "unknown"} (data depth: ${r.city?.depth ?? "unknown"}).`,
+    r.administrative?.ward ? `Ward/zone: ${r.administrative.ward}.` : "",
+    `Overall: ${r.verdict} (level ${r.level} of 5).`,
+    dim("Flooding", r.flood),
+    dim("Water pollution", r.contamination),
+    dim("Water shortage", r.scarcity),
+    `Confidence: ${r.confidence}.`,
+    r.coverage_note ? `Coverage note: ${r.coverage_note}` : "",
+    r.severity_note ? `Note: ${r.severity_note}` : "",
+    r.summary ? `Summary: ${r.summary}` : "",
+  ];
+  return lines.filter(Boolean).join("\n");
+}
+
+export async function askChat(
+  question: string,
+  context: string | null,
+  history: ChatTurn[],
+): Promise<string> {
+  const res = await fetch("/api/v1/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question, context, history }),
+  });
+  const body = await asJson<{ answer: string }>(res);
+  return body.answer;
+}
+
 export async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
   try {
     const res = await fetch(`/api/v1/reverse?lat=${lat}&lng=${lng}`);

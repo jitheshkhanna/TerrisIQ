@@ -6,6 +6,7 @@ import ScoreCard from "@/components/ScoreCard";
 import SearchBar from "@/components/SearchBar";
 import ViewSwitcher from "@/components/ViewSwitcher";
 import CityPicker from "@/components/CityPicker";
+import ChatPanel from "@/components/ChatPanel";
 import {
   assessRisk,
   fullLabel,
@@ -77,6 +78,7 @@ export default function Home() {
   const [view, setView] = useState<MapView>("flood");
   const [showWards, setShowWards] = useState(false);
   const [showViews, setShowViews] = useState(true);
+  const [locating, setLocating] = useState(false);
   // Ensures the ?lat&lng deep link (opened from the browser extension) scores only once.
   const deepLinkRef = useRef(false);
 
@@ -139,6 +141,40 @@ export default function Home() {
     }
   }, [city]);
 
+  const useMyLocation = useCallback(() => {
+    if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
+      setError("Location isn't available on this device. Search an address instead.");
+      return;
+    }
+    setLocating(true);
+    setError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        // Snap to the covered city the point falls in, so the score uses the right data.
+        const match =
+          cities.find(
+            (c) =>
+              latitude >= c.bbox.lat_min && latitude <= c.bbox.lat_max &&
+              longitude >= c.bbox.lng_min && longitude <= c.bbox.lng_max,
+          ) ?? null;
+        if (match && match.slug !== city?.slug) setCity(match);
+        setFlyTo({ lat: latitude, lng: longitude, zoom: 15 });
+        score(latitude, longitude, null, match?.slug ?? city?.slug ?? null);
+        setLocating(false);
+      },
+      (err) => {
+        setLocating(false);
+        setError(
+          err.code === err.PERMISSION_DENIED
+            ? "Location permission denied. Search an address or tap the map instead."
+            : "Couldn't get your location. Search an address or tap the map instead.",
+        );
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  }, [cities, city, score]);
+
   const changeCity = useCallback((next: City) => {
     setCity(next);
     setResult(null);
@@ -153,7 +189,9 @@ export default function Home() {
     <>
       <SearchBar
         city={city?.slug}
-        placeholder="Search a place"
+        placeholder="Paste a Maps link or search a place"
+        onUseLocation={useMyLocation}
+        locating={locating}
         leading={
           city && cities.length > 0 ? (
             <CityPicker cities={cities} value={city} onChange={changeCity} />
@@ -214,6 +252,14 @@ export default function Home() {
           <ScoreCard result={result} />
         </div>
       )}
+
+      <ChatPanel
+        result={result}
+        onLocation={(lat, lng, label) => {
+          setFlyTo({ lat, lng, zoom: 15 });
+          score(lat, lng, label);
+        }}
+      />
 
       <footer className="mt-3 px-1 pb-2 text-[12px] leading-relaxed text-[var(--ink-muted)]">
         <p>Screening only. Verify before you buy.</p>
