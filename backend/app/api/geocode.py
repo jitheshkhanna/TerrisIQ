@@ -179,8 +179,10 @@ def _locationiq(query, limit, bbox):
         "countrycodes": "in", "dedupe": 1, "accept-language": "en",
     }
     if bbox:
-        # viewbox = min_lon,min_lat,max_lon,max_lat ; bounded=0 biases without excluding.
-        params["viewbox"] = "%f,%f,%f,%f" % (bbox.lng_min, bbox.lat_min, bbox.lng_max, bbox.lat_max)
+        # bbox is a tuple (lat_min, lng_min, lat_max, lng_max). LocationIQ viewbox wants
+        # min_lon,min_lat,max_lon,max_lat; bounded=0 biases toward the city without excluding.
+        lat_min, lng_min, lat_max, lng_max = bbox
+        params["viewbox"] = "%f,%f,%f,%f" % (lng_min, lat_min, lng_max, lat_max)
         params["bounded"] = 0
     resp = httpx.get(LOCATIONIQ_URL, params=params, timeout=5.0)
     resp.raise_for_status()
