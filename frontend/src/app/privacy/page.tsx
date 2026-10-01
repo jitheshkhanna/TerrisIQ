@@ -58,10 +58,11 @@ export default function PrivacyPage() {
 
         <Section title="What the extension collects">
           <p>
-            <strong>Only the address you type in, and only when you click &ldquo;Analyze
-            property.&rdquo;</strong> When you submit an address, the extension sends that text
-            to the TerrisIQ API (<code>chennai-terra-risk.vercel.app</code>), which finds its
-            coordinates and returns a risk score. Nothing is sent until you press the button.
+            <strong>Only the location text you type into the search box.</strong> As you type,
+            that text is sent to the TerrisIQ API (<code>chennai-terra-risk.vercel.app</code>)
+            to fetch matching address suggestions. When you pick one, the extension sends its
+            coordinates to the same API to compute the risk score. Nothing else is sent, and
+            nothing is sent until you start typing in the box.
           </p>
           <p>
             The extension does <strong>not</strong> use any account, login, cookie, or
