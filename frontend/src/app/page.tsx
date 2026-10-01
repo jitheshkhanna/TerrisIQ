@@ -314,7 +314,7 @@ export default function Home() {
                          gap-2 px-4 pt-4 lg:px-6 lg:pt-5">
         <h1 className="pointer-events-auto rounded-lg bg-[var(--surface)]/85 px-2 py-1
                        text-[15px] font-semibold tracking-tight text-[var(--ink)] backdrop-blur">
-          Property Risk Analyser
+          TerrisIQ
         </h1>
       </header>
 
