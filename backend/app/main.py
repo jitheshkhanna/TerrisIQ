@@ -61,9 +61,20 @@ app.include_router(chat.router)
 
 @app.on_event("startup")
 def _warm_default_city():
-    """Only the default city is warmed. The others load on first request, which keeps a
-    cold start proportional to one city rather than eight."""
-    get_store(city_registry.get(city_registry.DEFAULT_CITY))
+    """Warm Chennai in a BACKGROUND thread so it never blocks cold-start responses. The
+    heavy ~26MB load used to run inline here, taxing every cold start — including the
+    frequent /geocode type-ahead calls, which need no city data at all. Risk scoring still
+    gets a warm store most of the time; the first /risk after a cold start pays the load
+    lazily via get_store() if the thread hasn't finished."""
+    import threading
+
+    def _warm():
+        try:
+            get_store(city_registry.get(city_registry.DEFAULT_CITY))
+        except Exception:  # noqa: BLE001 - never let warming crash the worker
+            pass
+
+    threading.Thread(target=_warm, daemon=True).start()
 
 
 @app.get("/api/v1/health")
