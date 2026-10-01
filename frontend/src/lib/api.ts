@@ -160,7 +160,9 @@ export async function geocode(
   city?: string | null,
   signal?: AbortSignal,
 ): Promise<GeocodeResponse> {
-  const params = new URLSearchParams({ q, limit: "6" });
+  // fast=1 uses the LocationIQ type-ahead path (same as the extension): ~0.5s instead of
+  // the ~4s Photon-with-fallbacks path. Photon still backs it up server-side.
+  const params = new URLSearchParams({ q, limit: "6", fast: "1" });
   if (city) params.set("city", city);
   const res = await fetch(`/api/v1/geocode?${params.toString()}`, { signal });
   return asJson<GeocodeResponse>(res);
