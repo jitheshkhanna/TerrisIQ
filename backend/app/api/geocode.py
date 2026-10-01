@@ -188,7 +188,7 @@ def _dedupe(results, limit):
 
 
 @router.get("/geocode", response_model=GeocodeResponse)
-async def geocode(q: str, limit: int = 6, city: str = None):
+async def geocode(q: str, limit: int = 6, city: str = None, fast: int = 0):
     raw = q.strip()
     # Bias to the selected city, otherwise "MG Road" lands in whichever metro Photon
     # happens to rank first.
@@ -200,7 +200,10 @@ async def geocode(q: str, limit: int = 6, city: str = None):
     limit = max(1, min(limit, 10))
     expanded = expand_query(raw) or raw
 
-    key = "s|%s|%d|%s" % (expanded.lower(), limit, target.slug if target else "-")
+    # Fast mode (type-ahead): Photon only — skip the anchored retry and the Nominatim
+    # fallback (which can add a second or more). Used by the extension popup so suggestions
+    # stay snappy; the city bias keeps them accurate.
+    key = "s|%s|%d|%s|%d" % (expanded.lower(), limit, target.slug if target else "-", 1 if fast else 0)
     cached = _cache_get(key)
     if cached is not None:
         return cached
@@ -212,26 +215,27 @@ async def geocode(q: str, limit: int = 6, city: str = None):
     except Exception:  # noqa: BLE001 - fall through to the backup geocoder
         results = []
 
-    # If nothing we got back actually contains the area the user named, resolve the area
-    # first and search around it. This also covers Photon returning nothing usable:
-    # "porur signal" comes back with a street in Ohio and a firm in New Zealand, both
-    # correctly discarded, leaving an empty list for a perfectly ordinary Chennai query.
-    best = max((relevance(expanded, r.label, r.context, r.category) for r in results),
-               default=0.0)
-    if best < WEAK_MATCH:
-        nearby = _anchored_retry(expanded, limit, bias, bounds)
-        if nearby:
-            source = "photon+anchor"
-            results = nearby + results
+    if not fast:
+        # If nothing we got back actually contains the area the user named, resolve the area
+        # first and search around it. This also covers Photon returning nothing usable:
+        # "porur signal" comes back with a street in Ohio and a firm in New Zealand, both
+        # correctly discarded, leaving an empty list for a perfectly ordinary Chennai query.
+        best = max((relevance(expanded, r.label, r.context, r.category) for r in results),
+                   default=0.0)
+        if best < WEAK_MATCH:
+            nearby = _anchored_retry(expanded, limit, bias, bounds)
+            if nearby:
+                source = "photon+anchor"
+                results = nearby + results
 
-    if not results:
-        source = "nominatim"
-        try:
-            results = [r for r in (_from_nominatim(i, bounds)
-                                   for i in _nominatim_search(expanded, limit)) if r]
-        except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=502,
-                                detail="Address search is unavailable right now (%s)." % exc)
+        if not results:
+            source = "nominatim"
+            try:
+                results = [r for r in (_from_nominatim(i, bounds)
+                                       for i in _nominatim_search(expanded, limit)) if r]
+            except Exception as exc:  # noqa: BLE001
+                raise HTTPException(status_code=502,
+                                    detail="Address search is unavailable right now (%s)." % exc)
 
     response = GeocodeResponse(query=raw, expanded=expanded if expanded != raw else None,
                                source=source,
