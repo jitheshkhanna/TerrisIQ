@@ -8,6 +8,7 @@ of those. Nominatim stays as a fallback for the rare query Photon misses.
 Both are free public services. If this ever carries real traffic, self-host Photon -
 the API shape here does not change.
 """
+import os
 import threading
 import time
 
@@ -25,6 +26,12 @@ PHOTON = "https://photon.komoot.io/api/"
 PHOTON_REVERSE = "https://photon.komoot.io/reverse"
 NOMINATIM = "https://nominatim.openstreetmap.org/search"
 HEADERS = {"User-Agent": "TerraRiskAnalyser/0.1 (parcel environmental risk screening)"}
+
+# LocationIQ is a fast, type-ahead-first geocoder with a free tier. When LOCATIONIQ_KEY is
+# set it serves the fast (/geocode?fast=1) autocomplete path in a few hundred ms; Photon
+# remains the automatic fallback (and the slow public Photon is why we added this at all).
+LOCATIONIQ_KEY = os.environ.get("LOCATIONIQ_KEY", "")
+LOCATIONIQ_URL = "https://api.locationiq.com/v1/autocomplete"
 
 _cache = {}
 _cache_lock = threading.Lock()
@@ -164,6 +171,38 @@ def _from_nominatim(item, bbox=None):
                          latitude=lat, longitude=lng, type=item.get("type"))
 
 
+def _locationiq(query, limit, bbox):
+    """Fast type-ahead via LocationIQ. Biased to the city bbox (not bounded, so a nearby
+    match still shows), India only. Returns GeocodeResult list, newest-ranked by LocationIQ."""
+    params = {
+        "key": LOCATIONIQ_KEY, "q": query, "limit": max(1, min(limit, 10)),
+        "countrycodes": "in", "dedupe": 1, "accept-language": "en",
+    }
+    if bbox:
+        # viewbox = min_lon,min_lat,max_lon,max_lat ; bounded=0 biases without excluding.
+        params["viewbox"] = "%f,%f,%f,%f" % (bbox.lng_min, bbox.lat_min, bbox.lng_max, bbox.lat_max)
+        params["bounded"] = 0
+    resp = httpx.get(LOCATIONIQ_URL, params=params, timeout=5.0)
+    resp.raise_for_status()
+    data = resp.json()
+    if not isinstance(data, list):   # LocationIQ returns {"error": ...} on no-match/limit
+        return []
+    out = []
+    for it in data:
+        try:
+            lat, lng = float(it["lat"]), float(it["lon"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        primary = it.get("display_place") or (it.get("display_name") or "").split(",")[0]
+        context = it.get("display_address") or ""
+        if not primary:
+            continue
+        kind = (it.get("type") or it.get("class") or "place").replace("_", " ").title()
+        out.append(GeocodeResult(label=primary, context=context, category=kind,
+                                 latitude=lat, longitude=lng, type=it.get("type")))
+    return out
+
+
 def _rank(results, query):
     """Re-rank by how well each result matches the distinctive part of the query,
     keeping the geocoder's own order as the tiebreak."""
@@ -207,6 +246,19 @@ async def geocode(q: str, limit: int = 6, city: str = None, fast: int = 0):
     cached = _cache_get(key)
     if cached is not None:
         return cached
+
+    # Fast path: LocationIQ first (fast, type-ahead), Photon as automatic fallback if the
+    # key is unset, LocationIQ errors, or it returns nothing.
+    if fast and LOCATIONIQ_KEY:
+        try:
+            liq = _locationiq(expanded, limit, bounds)
+        except Exception:  # noqa: BLE001 - any LocationIQ failure -> fall through to Photon
+            liq = []
+        if liq:
+            response = GeocodeResponse(query=raw, expanded=expanded if expanded != raw else None,
+                                       source="locationiq", results=_dedupe(liq, limit))
+            _cache_put(key, response)
+            return response
 
     results, source = [], "photon"
     try:
