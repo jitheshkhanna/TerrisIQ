@@ -59,7 +59,7 @@ export default function PrivacyPage() {
         <Section title="What the extension collects">
           <p>
             <strong>Only the location text you type into the search box.</strong> As you type,
-            that text is sent to the TerrisIQ API (<code>chennai-terra-risk.vercel.app</code>)
+            that text is sent to the TerrisIQ API (<code>terrisiq.com</code>)
             to fetch matching address suggestions. When you pick one, the extension sends its
             coordinates to the same API to compute the risk score. Nothing else is sent, and
             nothing is sent until you start typing in the box.
