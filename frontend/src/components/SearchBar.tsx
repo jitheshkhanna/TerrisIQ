@@ -19,9 +19,11 @@ interface Props {
 // Category is a quiet label, not a colour-coded taxonomy. Colour on this screen is
 // reserved for risk, so nothing here competes with the hazard ramp.
 
-// Photon has no rate limit and answers in well under 200ms, so we can search as the
-// user types rather than making them wait a full second between keystrokes.
-const DEBOUNCE_MS = 220;
+// Type-ahead hits the geocoder (LocationIQ) per keystroke, which has a rate limit and a
+// quota, so we wait a beat and require ≥3 characters, and cache results per session to
+// avoid repeat calls for the same query.
+const DEBOUNCE_MS = 300;
+const MIN_CHARS = 3;
 
 export default function SearchBar({ onSelect, city, placeholder, leading, onUseLocation, locating }: Props) {
   const [query, setQuery] = useState("");
@@ -35,6 +37,9 @@ export default function SearchBar({ onSelect, city, placeholder, leading, onUseL
   // Choosing a result writes its name into the input. Without this guard that change
   // re-triggers the search effect and the dropdown pops straight back open.
   const skipSearch = useRef(false);
+  // Per-session geocode cache (key: city|lowercased query) so repeat/returning queries
+  // don't re-hit the geocoder.
+  const cache = useRef<Map<string, { results: GeocodeResult[]; expanded: string | null }>>(new Map());
   const listId = "place-suggestions";
 
   const reset = () => {
@@ -47,7 +52,7 @@ export default function SearchBar({ onSelect, city, placeholder, leading, onUseL
 
   const handleChange = (value: string) => {
     setQuery(value);
-    if (value.trim().length < 2) reset();
+    if (value.trim().length < MIN_CHARS) reset();
   };
 
   const choose = (result: GeocodeResult) => {
@@ -66,7 +71,7 @@ export default function SearchBar({ onSelect, city, placeholder, leading, onUseL
       return;
     }
     const term = query.trim();
-    if (term.length < 2) return;
+    if (term.length < MIN_CHARS) return;
 
     // Pasted a Google Maps link or bare lat,lng? Use the exact pin — skip the geocoder.
     const pinned = parseLocationInput(term);
@@ -86,12 +91,25 @@ export default function SearchBar({ onSelect, city, placeholder, leading, onUseL
       return;
     }
 
+    // Serve a cached result instantly — no geocoder call for a query we've already seen.
+    const cacheKey = `${city ?? ""}|${term.toLowerCase()}`;
+    const hit = cache.current.get(cacheKey);
+    if (hit) {
+      setResults(hit.results);
+      setExpanded(hit.expanded);
+      setActive(-1);
+      setOpen(true);
+      setError(hit.results.length === 0 ? "Nothing found. Try a locality, street or landmark." : null);
+      return;
+    }
+
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       setBusy(true);
       setError(null);
       try {
         const body = await geocode(term, city, controller.signal);
+        cache.current.set(cacheKey, { results: body.results, expanded: body.expanded });
         setResults(body.results);
         setExpanded(body.expanded);
         setActive(-1);

@@ -33,6 +33,11 @@ HEADERS = {"User-Agent": "TerraRiskAnalyser/0.1 (parcel environmental risk scree
 LOCATIONIQ_KEY = os.environ.get("LOCATIONIQ_KEY", "")
 LOCATIONIQ_URL = "https://api.locationiq.com/v1/autocomplete"
 
+# Circuit breaker: after a 429 (free tier is ~2 req/s), skip LocationIQ for a short window
+# and serve Photon directly, so a burst never keeps hammering a rate-limited endpoint.
+_LIQ_COOLDOWN_S = 15
+_liq_cooldown_until = [0.0]
+
 _cache = {}
 _cache_lock = threading.Lock()
 CACHE_LIMIT = 2000
@@ -185,6 +190,10 @@ def _locationiq(query, limit, bbox):
         params["viewbox"] = "%f,%f,%f,%f" % (lng_min, lat_min, lng_max, lat_max)
         params["bounded"] = 0
     resp = httpx.get(LOCATIONIQ_URL, params=params, timeout=5.0)
+    if resp.status_code == 429:
+        # Rate-limited: open the circuit so the next calls skip LocationIQ and use Photon.
+        _liq_cooldown_until[0] = time.time() + _LIQ_COOLDOWN_S
+        return []
     resp.raise_for_status()
     data = resp.json()
     if not isinstance(data, list):   # LocationIQ returns {"error": ...} on no-match/limit
@@ -251,7 +260,7 @@ async def geocode(q: str, limit: int = 6, city: str = None, fast: int = 0):
 
     # Fast path: LocationIQ first (fast, type-ahead), Photon as automatic fallback if the
     # key is unset, LocationIQ errors, or it returns nothing.
-    if fast and LOCATIONIQ_KEY:
+    if fast and LOCATIONIQ_KEY and time.time() > _liq_cooldown_until[0]:
         try:
             liq = _locationiq(expanded, limit, bounds)
         except Exception:  # noqa: BLE001 - any LocationIQ failure -> fall through to Photon
