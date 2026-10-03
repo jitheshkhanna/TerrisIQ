@@ -11,6 +11,7 @@ import {
   assessRisk,
   fullLabel,
   listCities,
+  reportUrl,
   reverseGeocode,
   type City,
   type RiskResult,
@@ -285,6 +286,29 @@ export default function Home() {
     </>
   );
 
+  // Pinned report button — rendered OUTSIDE the scroll area so the panel content scrolls
+  // above it only, never under it. Orange (the 10% accent), dark ink on top.
+  const actionBar = !loading && result ? (
+    <a
+      href={reportUrl(result.latitude, result.longitude, result.address, result.city.slug)}
+      target="_blank"
+      rel="noreferrer"
+      className="flex min-h-[52px] w-full items-center justify-center rounded-xl
+                 bg-[var(--accent)] px-4 text-[16px] font-semibold text-[var(--accent-ink)]
+                 shadow-[0_12px_30px_-10px_rgba(245,124,0,0.5)]
+                 transition hover:bg-[var(--accent-strong)] active:scale-[0.99]"
+    >
+      Download report
+    </a>
+  ) : null;
+
+  // A soft fade at the bottom of the scroll area cues that there is more below (Law of
+  // continuity) without a "scroll down" label.
+  const scrollFade: React.CSSProperties = {
+    WebkitMaskImage: "linear-gradient(to bottom, #000 calc(100% - 26px), transparent)",
+    maskImage: "linear-gradient(to bottom, #000 calc(100% - 26px), transparent)",
+  };
+
   if (!city) {
     return (
       <main className="fixed inset-0 grid place-items-center bg-[var(--plane)]">
@@ -312,26 +336,38 @@ export default function Home() {
 
       <header className="pointer-events-none absolute left-0 right-0 top-0 z-20 flex items-start
                          gap-2 px-4 pt-4 lg:px-6 lg:pt-5">
-        <h1 className="pointer-events-auto rounded-lg bg-[var(--surface)]/85 px-2 py-1
-                       text-[15px] font-semibold tracking-tight text-[var(--ink)] backdrop-blur">
+        <h1 className="pointer-events-auto flex items-center gap-1.5 rounded-lg bg-[var(--surface)]/85
+                       px-2 py-1 text-[15px] font-semibold tracking-tight text-[var(--ink)] backdrop-blur">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/icon.png" alt="" aria-hidden className="h-5 w-5" />
           TerrisIQ
         </h1>
       </header>
 
-      {/* Desktop: a floating column over the map. */}
-      <div className="quiet-scroll absolute bottom-5 left-6 top-16 z-20 hidden w-[400px]
-                      overflow-y-auto pr-1 lg:block">
-        {panel}
+      {/* Desktop: a floating column over the map; the report button is pinned below the scroll. */}
+      <div className="absolute bottom-5 left-6 top-16 z-20 hidden w-[400px] flex-col lg:flex">
+        <div className="quiet-scroll min-h-0 flex-1 overflow-y-auto pr-1"
+             style={actionBar ? scrollFade : undefined}>
+          {panel}
+        </div>
+        {actionBar && <div className="mt-2 pr-1">{actionBar}</div>}
       </div>
 
-      {/* Mobile: the map keeps the top, the panel scrolls beneath it. */}
-      <div className="absolute inset-x-0 bottom-0 top-[42dvh] z-20 flex flex-col lg:hidden">
-        <div className="quiet-scroll flex-1 overflow-y-auto rounded-t-3xl border-t border-[var(--ring)]
-                        bg-[var(--plane)] px-4 pb-8 pt-3
-                        shadow-[0_-10px_30px_-14px_rgba(11,11,11,0.22)]">
+      {/* Mobile: the map keeps the top, the panel scrolls beneath it; the report button is
+          pinned to the bottom of the sheet, with the scroll content fading under it. */}
+      <div className="absolute inset-x-0 bottom-0 top-[42dvh] z-20 flex flex-col overflow-hidden
+                      rounded-t-3xl border-t border-[var(--ring)] bg-[var(--plane)]
+                      shadow-[0_-10px_30px_-14px_rgba(11,11,11,0.22)] lg:hidden">
+        <div className="quiet-scroll min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-3"
+             style={actionBar ? scrollFade : undefined}>
           <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-[var(--edge)]" aria-hidden />
           {panel}
         </div>
+        {actionBar && (
+          <div className="flex-none border-t border-[var(--hairline)] bg-[var(--plane)] px-4 pb-5 pt-3">
+            {actionBar}
+          </div>
+        )}
       </div>
 
       {/* The map control collapses behind one button so it never competes with the answer. */}

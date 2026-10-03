@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { reportUrl, type Fact, type RiskResult, type RiskScore } from "@/lib/api";
+import { type Fact, type RiskResult, type RiskScore } from "@/lib/api";
 import { gradeFill, gradeText, gradeTrack } from "@/lib/design";
 
 /* The card answers three questions in the order people ask them:
@@ -246,17 +246,6 @@ export default function ScoreCard({ result }: { result: RiskResult }) {
 
       {/* 3. Everything else, on request */}
       <Details result={result} />
-
-      <a
-        href={reportUrl(result.latitude, result.longitude, result.address, result.city.slug)}
-        target="_blank"
-        rel="noreferrer"
-        className="mt-3 flex min-h-[52px] w-full items-center justify-center rounded-xl
-                   bg-[var(--accent)] px-4 text-[16px] font-semibold text-[var(--accent-ink)] transition
-                   hover:bg-[var(--accent-strong)] active:scale-[0.99]"
-      >
-        Download report
-      </a>
     </div>
   );
 }
