@@ -186,7 +186,8 @@ export default function ChatPanel({ result, onLocation }: Props) {
           disabled={busy || !input.trim()}
           aria-label="Send"
           className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-xl
-                     bg-[var(--ink)] text-[var(--surface)] transition disabled:opacity-40"
+                     bg-[var(--accent)] text-[var(--accent-ink)] transition
+                     hover:bg-[var(--accent-strong)] disabled:opacity-40"
         >
           <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" aria-hidden>
             <path d="M2 8h11M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.6"

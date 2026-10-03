@@ -252,8 +252,8 @@ export default function ScoreCard({ result }: { result: RiskResult }) {
         target="_blank"
         rel="noreferrer"
         className="mt-3 flex min-h-[52px] w-full items-center justify-center rounded-xl
-                   bg-[var(--ink)] px-4 text-[16px] font-medium text-white transition
-                   hover:bg-[var(--ink-2)] active:scale-[0.99]"
+                   bg-[var(--accent)] px-4 text-[16px] font-semibold text-[var(--accent-ink)] transition
+                   hover:bg-[var(--accent-strong)] active:scale-[0.99]"
       >
         Download report
       </a>
