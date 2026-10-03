@@ -43,8 +43,9 @@
   /* Apple-style frosted surfaces. Kept THICK (high opacity) on purpose: these cards float
      over the map, so they must stay opaque enough that text clears contrast over any flood
      colour behind. The blur adds depth; it is never the thing keeping text legible. */
-  --glass-card: rgba(252, 252, 251, 0.82);
-  --glass-float: rgba(252, 252, 251, 0.80);
+  --glass-card: rgba(252, 252, 251, 0.96); /* reading surface over the map: near-opaque so
+                                              map labels never bleed through the text */
+  --glass-float: rgba(252, 252, 251, 0.80); /* map-layer panel / search: stays glassy */
   --glass-brd: rgba(255, 255, 255, 0.55);
   --glass-sheen: inset 0 1px 0 rgba(255, 255, 255, 0.65);
   --glass-blur: blur(20px) saturate(140%);

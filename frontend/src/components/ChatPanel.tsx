@@ -81,7 +81,7 @@ export default function ChatPanel({ result, onLocation }: Props) {
           role: "note",
           text:
             err instanceof Error && /busy/i.test(err.message)
-              ? "The assistant is busy for a second — try again."
+              ? "The assistant is busy for a second. Try again."
               : "Couldn't reach the assistant. Try again in a moment.",
         },
       ]);
@@ -109,8 +109,8 @@ export default function ChatPanel({ result, onLocation }: Props) {
         {messages.length === 0 && (
           <p className="py-1 text-[14px] leading-relaxed text-[var(--ink-muted)]">
             {result
-              ? "Ask anything about this location's risk — or paste another Google Maps link to check a different place."
-              : "Search a place, drop a pin, or paste a Google Maps link — then ask me anything about its risk."}
+              ? "Ask anything about this location's risk, or paste another Google Maps link to check a different place."
+              : "Search a place, drop a pin, or paste a Google Maps link, then ask me anything about its risk."}
           </p>
         )}
 

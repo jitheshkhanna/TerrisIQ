@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — TerrisIQ",
+  title: "Privacy Policy · TerrisIQ",
   description:
     "How TerrisIQ handles data: you enter a property address, we send only that address "
     + "to our risk API to compute a score. No page access, no tracking, no identifiers.",
