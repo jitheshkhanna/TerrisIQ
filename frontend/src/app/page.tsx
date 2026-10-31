@@ -5,7 +5,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import ScoreCard from "@/components/ScoreCard";
 import SearchBar from "@/components/SearchBar";
 import ViewSwitcher from "@/components/ViewSwitcher";
-import CityPicker from "@/components/CityPicker";
 import ChatPanel from "@/components/ChatPanel";
 import {
   assessRisk,
@@ -78,7 +77,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<MapView>("flood");
   const [showWards, setShowWards] = useState(false);
-  const [showViews, setShowViews] = useState(false);
+  const [showViews, setShowViews] = useState(true);
   const [locating, setLocating] = useState(false);
   // Ensures the ?lat&lng deep link (opened from the browser extension) scores only once.
   const deepLinkRef = useRef(false);
@@ -181,14 +180,6 @@ export default function Home() {
     );
   }, [cities, city, score]);
 
-  const changeCity = useCallback((next: City) => {
-    setCity(next);
-    setResult(null);
-    setMarker(null);
-    setError(null);
-    setFlyTo({ lat: next.centre.lat, lng: next.centre.lng, zoom: 10.8 });
-  }, []);
-
   // Land -> jump to the visitor's own location, like a maps app. Skipped when a ?lat&lng
   // deep link already picked the place. US points now score too (FEMA), India via the city.
   const autoLocatedRef = useRef(false);
@@ -204,7 +195,7 @@ export default function Home() {
 
   // Mobile bottom sheet with iOS-style snap: PEEK (map dominant, data peeking) <-> FULL
   // (data over the map). The grabber follows the finger, then snaps on release.
-  const PEEK_DVH = 58;
+  const PEEK_DVH = 80; // collapsed: 80% map, 20% data peeking
   const FULL_DVH = 8;
   const [sheetExpanded, setSheetExpanded] = useState(false);
   const [sheetDragTop, setSheetDragTop] = useState<number | null>(null);
@@ -236,14 +227,9 @@ export default function Home() {
     <>
       <SearchBar
         city={city?.slug}
-        placeholder="Paste a Maps link or search a place"
+        placeholder="Search a place in India or the US, or paste a Maps link"
         onUseLocation={() => useMyLocation(false)}
         locating={locating}
-        leading={
-          city && cities.length > 0 ? (
-            <CityPicker cities={cities} value={city} onChange={changeCity} />
-          ) : null
-        }
         onSelect={(found) => {
           setFlyTo({ lat: found.latitude, lng: found.longitude });
           score(found.latitude, found.longitude, fullLabel(found));
@@ -380,40 +366,41 @@ export default function Home() {
         />
       </div>
 
-      {/* Logo and the map-layers control live in one cluster, top-left. */}
+      {/* Logo stands on its own, top-left. */}
       <header className="pointer-events-none absolute left-0 right-0 top-0 z-30 flex items-start
                          px-4 pt-4 lg:px-6 lg:pt-5">
-        <div className="pointer-events-auto flex flex-col items-start gap-2">
-          <div className="floating flex items-center gap-2 px-2.5 py-1.5">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/icon.png" alt="" aria-hidden className="h-6 w-6" />
-            <span className="text-[15px] font-semibold tracking-tight text-[var(--ink)]">TerrisIQ</span>
-            <span className="mx-0.5 h-5 w-px bg-[var(--hairline)]" aria-hidden />
-            <button
-              onClick={() => setShowViews(!showViews)}
-              aria-expanded={showViews}
-              className="flex min-h-[36px] items-center gap-1.5 text-[14px] font-medium
-                         text-[var(--ink-2)] transition hover:text-[var(--ink)]"
-            >
-              <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" aria-hidden>
-                <path d="M8 1.8 14.5 5 8 8.2 1.5 5 8 1.8Z M2.6 8.2 8 10.9l5.4-2.7 M2.6 11.2 8 13.9l5.4-2.7"
-                      stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-              </svg>
-              Map
-            </button>
-          </div>
-          {showViews && (
-            <div className="rise w-[260px] sm:w-[280px]">
-              <ViewSwitcher
-                view={view}
-                onChange={setView}
-                showWards={showWards}
-                onWardsChange={setShowWards}
-              />
-            </div>
-          )}
+        <div className="floating pointer-events-auto flex items-center gap-2 px-2.5 py-1.5">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/icon.png" alt="" aria-hidden className="h-6 w-6" />
+          <span className="text-[15px] font-semibold tracking-tight text-[var(--ink)]">TerrisIQ</span>
         </div>
       </header>
+
+      {/* Map-layers control, top-right, open by default. */}
+      <div className="absolute right-4 top-4 z-30 flex flex-col items-end gap-2 lg:right-6 lg:top-5">
+        <button
+          onClick={() => setShowViews(!showViews)}
+          aria-expanded={showViews}
+          className="floating flex min-h-[var(--tap)] items-center gap-2 px-4 text-[15px]
+                     font-medium text-[var(--ink-2)] transition hover:text-[var(--ink)]"
+        >
+          <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" aria-hidden>
+            <path d="M8 1.8 14.5 5 8 8.2 1.5 5 8 1.8Z M2.6 8.2 8 10.9l5.4-2.7 M2.6 11.2 8 13.9l5.4-2.7"
+                  stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+          </svg>
+          Map
+        </button>
+        {showViews && (
+          <div className="rise w-[260px] sm:w-[280px]">
+            <ViewSwitcher
+              view={view}
+              onChange={setView}
+              showWards={showWards}
+              onWardsChange={setShowWards}
+            />
+          </div>
+        )}
+      </div>
 
       {/* Desktop: a floating column over the map; the report button is pinned below the scroll. */}
       <div className="absolute bottom-5 left-6 top-16 z-20 hidden w-[400px] flex-col lg:flex">
