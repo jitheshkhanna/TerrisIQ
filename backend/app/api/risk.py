@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.core import cities as city_registry
 from app.core.scoring import assess
+from app.engines.us_flood import in_us, us_assess
 from app.models.schemas import RiskRequest, RiskResponse
 
 router = APIRouter(prefix="/api/v1", tags=["risk"])
@@ -61,6 +62,8 @@ async def list_cities():
 
 @router.post("/risk", response_model=RiskResponse)
 async def assess_risk(req: RiskRequest):
+    if in_us(req.latitude, req.longitude):
+        return us_assess(req.latitude, req.longitude, req.address)
     city = resolve_city(req.latitude, req.longitude, req.city)
     return assess(city, req.latitude, req.longitude, req.address)
 
@@ -69,5 +72,7 @@ async def assess_risk(req: RiskRequest):
 async def assess_risk_get(latitude: float, longitude: float,
                           address: str = None, city: str = None):
     req = RiskRequest(latitude=latitude, longitude=longitude, address=address, city=city)
+    if in_us(req.latitude, req.longitude):
+        return us_assess(req.latitude, req.longitude, req.address)
     resolved = resolve_city(req.latitude, req.longitude, req.city)
     return assess(resolved, req.latitude, req.longitude, req.address)

@@ -3,11 +3,11 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-# Wide enough to cover every supported metro, from Ahmedabad in the west to Kolkata in
-# the east. A point outside any city's own bbox is rejected by the endpoint with a list
-# of what is covered, rather than silently scored against the wrong city.
-LAT_MIN, LAT_MAX = 8.0, 32.0
-LNG_MIN, LNG_MAX = 68.0, 92.0
+# World bounds: coverage (India cities vs US) is decided by routing in the endpoint, which
+# rejects an uncovered point with a list of what is covered. The model only guards against
+# nonsense coordinates.
+LAT_MIN, LAT_MAX = -90.0, 90.0
+LNG_MIN, LNG_MAX = -180.0, 180.0
 
 
 class RiskRequest(BaseModel):
