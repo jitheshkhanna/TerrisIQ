@@ -427,6 +427,12 @@ export default function MapView({
 
   useEffect(() => {
     if (!flyTo || !map.current) return;
+    // A point outside the city (e.g. a US address scored from FEMA) is unreachable while
+    // maxBounds is locked to the city. Release the lock so the camera can travel there.
+    const b = cityRef.current.bbox;
+    const outside = flyTo.lat < b.lat_min || flyTo.lat > b.lat_max ||
+                    flyTo.lng < b.lng_min || flyTo.lng > b.lng_max;
+    if (outside) map.current.setMaxBounds(null);
     map.current.flyTo({
       center: [flyTo.lng, flyTo.lat],
       zoom: flyTo.zoom ?? 14.5,

@@ -78,7 +78,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<MapView>("flood");
   const [showWards, setShowWards] = useState(false);
-  const [showViews, setShowViews] = useState(true);
+  const [showViews, setShowViews] = useState(false);
   const [locating, setLocating] = useState(false);
   // Ensures the ?lat&lng deep link (opened from the browser extension) scores only once.
   const deepLinkRef = useRef(false);
@@ -126,6 +126,10 @@ export default function Home() {
       // number the user actually came for.
       const assessment = await assessRisk(lat, lng, label ?? null, slug ?? city?.slug ?? null);
       setResult(assessment);
+      // Let the map follow the scored place: adopt its city when it differs (a US point
+      // returns a "us" pseudo-city centred on the point, so the map leaves India for it;
+      // scoring back in India adopts the India city again).
+      if (assessment.city && assessment.city.slug !== city?.slug) setCity(assessment.city);
       if (!label) {
         const resolved = await reverseGeocode(lat, lng);
         if (resolved) setResult((prev) => (prev ? { ...prev, address: resolved } : prev));
@@ -142,9 +146,9 @@ export default function Home() {
     }
   }, [city]);
 
-  const useMyLocation = useCallback(() => {
+  const useMyLocation = useCallback((silent = false) => {
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
-      setError("Location isn't available on this device. Search an address instead.");
+      if (!silent) setError("Location isn't available on this device. Search an address instead.");
       return;
     }
     setLocating(true);
@@ -166,6 +170,7 @@ export default function Home() {
       },
       (err) => {
         setLocating(false);
+        if (silent) return; // auto-locate on landing: deny quietly, just show the default city
         setError(
           err.code === err.PERMISSION_DENIED
             ? "Location permission denied. Search an address or tap the map instead."
@@ -184,6 +189,47 @@ export default function Home() {
     setFlyTo({ lat: next.centre.lat, lng: next.centre.lng, zoom: 10.8 });
   }, []);
 
+  // Land -> jump to the visitor's own location, like a maps app. Skipped when a ?lat&lng
+  // deep link already picked the place. US points now score too (FEMA), India via the city.
+  const autoLocatedRef = useRef(false);
+  useEffect(() => {
+    if (autoLocatedRef.current || cities.length === 0) return;
+    autoLocatedRef.current = true;
+    const p = new URLSearchParams(window.location.search);
+    const hasPoint =
+      Number.isFinite(parseFloat(p.get("lat") ?? p.get("latitude") ?? "")) &&
+      Number.isFinite(parseFloat(p.get("lng") ?? p.get("longitude") ?? ""));
+    if (!hasPoint) useMyLocation(true);
+  }, [cities, useMyLocation]);
+
+  // Mobile bottom sheet with iOS-style snap: PEEK (map dominant, data peeking) <-> FULL
+  // (data over the map). The grabber follows the finger, then snaps on release.
+  const PEEK_DVH = 58;
+  const FULL_DVH = 8;
+  const [sheetExpanded, setSheetExpanded] = useState(false);
+  const [sheetDragTop, setSheetDragTop] = useState<number | null>(null);
+  const sheetDrag = useRef<{ y: number; top: number; moved: number } | null>(null);
+  const sheetTop = sheetDragTop ?? (sheetExpanded ? FULL_DVH : PEEK_DVH);
+  const onSheetDown = (e: React.PointerEvent) => {
+    sheetDrag.current = { y: e.clientY, top: sheetTop, moved: 0 };
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+  };
+  const onSheetMove = (e: React.PointerEvent) => {
+    const d = sheetDrag.current;
+    if (!d) return;
+    d.moved = Math.max(d.moved, Math.abs(e.clientY - d.y));
+    const dvh = ((e.clientY - d.y) / window.innerHeight) * 100;
+    setSheetDragTop(Math.max(FULL_DVH, Math.min(PEEK_DVH, d.top + dvh)));
+  };
+  const onSheetUp = () => {
+    const d = sheetDrag.current;
+    if (!d) return;
+    if (d.moved < 6) setSheetExpanded((v) => !v); // a tap on the grabber toggles
+    else setSheetExpanded((sheetDragTop ?? d.top) < (PEEK_DVH + FULL_DVH) / 2);
+    setSheetDragTop(null);
+    sheetDrag.current = null;
+  };
+
   const examples = (city && EXAMPLES[city.slug]) || [];
 
   const panel = (
@@ -191,7 +237,7 @@ export default function Home() {
       <SearchBar
         city={city?.slug}
         placeholder="Paste a Maps link or search a place"
-        onUseLocation={useMyLocation}
+        onUseLocation={() => useMyLocation(false)}
         locating={locating}
         leading={
           city && cities.length > 0 ? (
@@ -334,14 +380,39 @@ export default function Home() {
         />
       </div>
 
-      <header className="pointer-events-none absolute left-0 right-0 top-0 z-20 flex items-start
-                         gap-2 px-4 pt-4 lg:px-6 lg:pt-5">
-        <h1 className="pointer-events-auto flex items-center gap-1.5 rounded-lg bg-[var(--surface)]/85
-                       px-2 py-1 text-[15px] font-semibold tracking-tight text-[var(--ink)] backdrop-blur">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/icon.png" alt="" aria-hidden className="h-5 w-5" />
-          TerrisIQ
-        </h1>
+      {/* Logo and the map-layers control live in one cluster, top-left. */}
+      <header className="pointer-events-none absolute left-0 right-0 top-0 z-30 flex items-start
+                         px-4 pt-4 lg:px-6 lg:pt-5">
+        <div className="pointer-events-auto flex flex-col items-start gap-2">
+          <div className="floating flex items-center gap-2 px-2.5 py-1.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/icon.png" alt="" aria-hidden className="h-6 w-6" />
+            <span className="text-[15px] font-semibold tracking-tight text-[var(--ink)]">TerrisIQ</span>
+            <span className="mx-0.5 h-5 w-px bg-[var(--hairline)]" aria-hidden />
+            <button
+              onClick={() => setShowViews(!showViews)}
+              aria-expanded={showViews}
+              className="flex min-h-[36px] items-center gap-1.5 text-[14px] font-medium
+                         text-[var(--ink-2)] transition hover:text-[var(--ink)]"
+            >
+              <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" aria-hidden>
+                <path d="M8 1.8 14.5 5 8 8.2 1.5 5 8 1.8Z M2.6 8.2 8 10.9l5.4-2.7 M2.6 11.2 8 13.9l5.4-2.7"
+                      stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+              </svg>
+              Map
+            </button>
+          </div>
+          {showViews && (
+            <div className="rise w-[260px] sm:w-[280px]">
+              <ViewSwitcher
+                view={view}
+                onChange={setView}
+                showWards={showWards}
+                onWardsChange={setShowWards}
+              />
+            </div>
+          )}
+        </div>
       </header>
 
       {/* Desktop: a floating column over the map; the report button is pinned below the scroll. */}
@@ -353,49 +424,26 @@ export default function Home() {
         {actionBar && <div className="mt-2 pr-1">{actionBar}</div>}
       </div>
 
-      {/* Mobile: the map keeps the top, the panel scrolls beneath it; the report button is
-          pinned to the bottom of the sheet, with the scroll content fading under it. */}
-      <div className="absolute inset-x-0 bottom-0 top-[42dvh] z-20 flex flex-col overflow-hidden
+      {/* Mobile: a draggable bottom sheet. Grabber drags map-dominant <-> data-over-map and
+          snaps; the report button stays pinned, with content fading under it. */}
+      <div className="absolute inset-x-0 bottom-0 z-20 flex flex-col overflow-hidden
                       rounded-t-3xl border-t border-[var(--ring)] bg-[var(--plane)]
-                      shadow-[0_-10px_30px_-14px_rgba(11,11,11,0.22)] lg:hidden">
-        <div className="quiet-scroll min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-3"
+                      shadow-[0_-10px_30px_-14px_rgba(11,11,11,0.22)] lg:hidden"
+           style={{ top: `${sheetTop}dvh`,
+                    transition: sheetDragTop === null ? "top .32s cubic-bezier(.4,0,.2,1)" : "none" }}>
+        <div onPointerDown={onSheetDown} onPointerMove={onSheetMove} onPointerUp={onSheetUp}
+             onPointerCancel={onSheetUp}
+             className="flex-none touch-none cursor-grab pb-1 pt-3 active:cursor-grabbing"
+             role="button" aria-label="Drag to expand or collapse the panel">
+          <div className="mx-auto h-1.5 w-10 rounded-full bg-[var(--edge)]" aria-hidden />
+        </div>
+        <div className="quiet-scroll min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-1"
              style={actionBar ? scrollFade : undefined}>
-          <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-[var(--edge)]" aria-hidden />
           {panel}
         </div>
         {actionBar && (
           <div className="flex-none border-t border-[var(--hairline)] bg-[var(--plane)] px-4 pb-5 pt-3">
             {actionBar}
-          </div>
-        )}
-      </div>
-
-      {/* The map control collapses behind one button so it never competes with the answer. */}
-      <div className="absolute right-4 top-4 z-30 flex flex-col items-end gap-2 lg:right-6 lg:top-5">
-        <button
-          onClick={() => setShowViews(!showViews)}
-          aria-expanded={showViews}
-          className="floating flex min-h-[var(--tap)] items-center gap-2 px-4 text-[15px]
-                     font-medium text-[var(--ink-2)] transition hover:text-[var(--ink)]"
-        >
-          <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" aria-hidden>
-            <path
-              d="M8 1.8 14.5 5 8 8.2 1.5 5 8 1.8Z M2.6 8.2 8 10.9l5.4-2.7 M2.6 11.2 8 13.9l5.4-2.7"
-              stroke="currentColor"
-              strokeWidth="1.3"
-              strokeLinejoin="round"
-            />
-          </svg>
-          Map
-        </button>
-        {showViews && (
-          <div className="rise w-[260px] sm:w-[280px]">
-            <ViewSwitcher
-              view={view}
-              onChange={setView}
-              showWards={showWards}
-              onWardsChange={setShowWards}
-            />
           </div>
         )}
       </div>
