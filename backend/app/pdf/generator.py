@@ -378,8 +378,12 @@ def _header_footer(canvas, doc):
 
 
 def build_report(result):
-    city = city_registry.get((result.get("city") or {}).get("slug")) \
-        or city_registry.get(city_registry.DEFAULT_CITY)
+    city_info = result.get("city") or {}
+    city = city_registry.get(city_info.get("slug"))
+    # A US (or any out-of-India) result has no local layer store; skip the locality map
+    # rather than draw a misleading Chennai one at the wrong coordinates.
+    is_local = city is not None
+    city_name = city.name if city else (city_info.get("name") or "Location")
     st = _styles()
     buf = io.BytesIO()
     width = PAGE_W - 2 * MARGIN
@@ -396,7 +400,7 @@ def build_report(result):
     story.append(Paragraph("Environmental Risk Report", st["title"]))
     story.append(Paragraph(address, st["body"]))
     if result.get("coverage_note"):
-        story.append(Paragraph("<b>%s</b> &middot; %s" % (city.name, result["coverage_note"]),
+        story.append(Paragraph("<b>%s</b> &middot; %s" % (city_name, result["coverage_note"]),
                                st["small"]))
     admin = result.get("administrative") or {}
     if admin.get("summary"):
@@ -425,10 +429,11 @@ def build_report(result):
             story.append(Paragraph("<b>%s.</b> %s" % (dimension, message), st["warn"]))
         story.append(Spacer(1, 4))
 
-    story.append(Paragraph("Locality map", st["h2"]))
-    story.append(LocalityMap(city, result["latitude"], result["longitude"], width))
-    story.append(Spacer(1, 2))
-    story.append(Legend(width))
+    if is_local:
+        story.append(Paragraph("Locality map", st["h2"]))
+        story.append(LocalityMap(city, result["latitude"], result["longitude"], width))
+        story.append(Spacer(1, 2))
+        story.append(Legend(width))
 
     story.append(PageBreak())
     story.append(Paragraph("Risk breakdown", st["h2"]))
@@ -442,7 +447,7 @@ def build_report(result):
         story.append(Paragraph(
             "No industrial or waste sites are mapped for %s, so this dimension is not "
             "scored. That is a gap in the mapping, not a clean bill of health."
-            % city.name, st["body"]))
+            % city_name, st["body"]))
         story.append(Spacer(1, 8))
     if result.get("scarcity"):
         _dimension_section(story, st, "3. Summer water scarcity", 0.25,
@@ -453,7 +458,7 @@ def build_report(result):
             "No groundwater evidence is published for %s, so this dimension is not "
             "scored and the other two carry the whole grade. Absence of data is not "
             "the same as absence of risk: ask neighbours what depth their borewell "
-            "runs at, and whether it holds through May." % city.name, st["body"]))
+            "runs at, and whether it holds through May." % city_name, st["body"]))
         story.append(Spacer(1, 8))
 
     context = result["flood"]["details"].get("locality_context")

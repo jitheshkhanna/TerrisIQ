@@ -134,9 +134,7 @@ def _nominatim_search(query, limit):
             time.sleep(wait)
         _nominatim_last[0] = time.time()
     resp = httpx.get(NOMINATIM, params={
-        "q": "%s, Chennai" % query, "format": "jsonv2", "limit": limit,
-        "countrycodes": "in", "addressdetails": 1,
-        "viewbox": "79.80,13.50,80.50,12.50", "bounded": 1,
+        "q": query, "format": "jsonv2", "limit": limit, "addressdetails": 1,
     }, headers=HEADERS, timeout=10.0)
     resp.raise_for_status()
     return resp.json()
@@ -181,7 +179,7 @@ def _locationiq(query, limit, bbox):
     match still shows), India only. Returns GeocodeResult list, newest-ranked by LocationIQ."""
     params = {
         "key": LOCATIONIQ_KEY, "q": query, "limit": max(1, min(limit, 10)),
-        "countrycodes": "in", "dedupe": 1, "accept-language": "en",
+        "dedupe": 1, "accept-language": "en",
     }
     if bbox:
         # bbox is a tuple (lat_min, lng_min, lat_max, lng_max). LocationIQ viewbox wants
@@ -273,7 +271,8 @@ async def geocode(q: str, limit: int = 6, city: str = None, fast: int = 0):
 
     results, source = [], "photon"
     try:
-        results = [r for r in (_from_photon(f, bounds)
+        # bbox is a soft ranking bias via `near`, not a hard filter: results are global.
+        results = [r for r in (_from_photon(f, None)
                                for f in _photon_search(expanded, limit, near=bias)) if r]
     except Exception:  # noqa: BLE001 - fall through to the backup geocoder
         results = []
@@ -286,7 +285,7 @@ async def geocode(q: str, limit: int = 6, city: str = None, fast: int = 0):
         best = max((relevance(expanded, r.label, r.context, r.category) for r in results),
                    default=0.0)
         if best < WEAK_MATCH:
-            nearby = _anchored_retry(expanded, limit, bias, bounds)
+            nearby = _anchored_retry(expanded, limit, bias, None)
             if nearby:
                 source = "photon+anchor"
                 results = nearby + results
@@ -294,7 +293,7 @@ async def geocode(q: str, limit: int = 6, city: str = None, fast: int = 0):
         if not results:
             source = "nominatim"
             try:
-                results = [r for r in (_from_nominatim(i, bounds)
+                results = [r for r in (_from_nominatim(i, None)
                                        for i in _nominatim_search(expanded, limit)) if r]
             except Exception as exc:  # noqa: BLE001
                 raise HTTPException(status_code=502,

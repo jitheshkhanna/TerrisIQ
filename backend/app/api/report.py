@@ -4,6 +4,7 @@ from fastapi.responses import Response
 
 from app.api.risk import resolve_city
 from app.core.scoring import assess
+from app.engines.us_flood import in_us, us_assess
 from app.models.schemas import RiskRequest
 from app.pdf.generator import build_report
 
@@ -16,10 +17,16 @@ def _filename(result):
     return "property-risk-%s-grade-%s.pdf" % (safe[:40], result["composite_grade"])
 
 
+def _assess(req):
+    if in_us(req.latitude, req.longitude):
+        return us_assess(req.latitude, req.longitude, req.address)
+    city = resolve_city(req.latitude, req.longitude, req.city)
+    return assess(city, req.latitude, req.longitude, req.address)
+
+
 @router.post("/report")
 async def report(req: RiskRequest):
-    city = resolve_city(req.latitude, req.longitude, req.city)
-    result = assess(city, req.latitude, req.longitude, req.address)
+    result = _assess(req)
     pdf = build_report(result)
     return Response(
         content=pdf, media_type="application/pdf",
@@ -28,9 +35,7 @@ async def report(req: RiskRequest):
 
 @router.get("/report")
 async def report_get(latitude: float, longitude: float, address: str = None):
-    req = RiskRequest(latitude=latitude, longitude=longitude, address=address)
-    city = resolve_city(req.latitude, req.longitude, req.city)
-    result = assess(city, req.latitude, req.longitude, req.address)
+    result = _assess(RiskRequest(latitude=latitude, longitude=longitude, address=address))
     pdf = build_report(result)
     return Response(
         content=pdf, media_type="application/pdf",
