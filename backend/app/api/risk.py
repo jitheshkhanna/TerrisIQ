@@ -3,10 +3,17 @@ from fastapi import APIRouter, HTTPException
 
 from app.core import cities as city_registry
 from app.core.scoring import assess
+from app.engines.nowcast import waterlogging_now
 from app.engines.us_flood import in_us, us_assess
 from app.models.schemas import RiskRequest, RiskResponse
 
 router = APIRouter(prefix="/api/v1", tags=["risk"])
+
+
+@router.get("/nowcast")
+def nowcast(lat: float, lng: float, flood_level: int = 3):
+    """Live waterlogging signal: rain falling now x this place's flood susceptibility."""
+    return waterlogging_now(lat, lng, flood_level)
 
 
 def resolve_city(latitude, longitude, slug=None):

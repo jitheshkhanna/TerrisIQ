@@ -135,6 +135,28 @@ async function asJson<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export type NowcastStatus = "clear" | "watch" | "likely" | "active" | "unavailable";
+export interface Nowcast {
+  status: NowcastStatus;
+  headline: string | null;
+  rain_mm_h?: number;
+  rain_3h_mm?: number;
+  intensity?: string;
+  observed_at?: string | null;
+}
+
+/** Live waterlogging signal (rain now x flood susceptibility). Never throws for the caller:
+ *  any failure resolves to an unavailable status so the live strip just hides. */
+export async function nowcast(lat: number, lng: number, floodLevel: number): Promise<Nowcast> {
+  try {
+    const res = await fetch(`/api/v1/nowcast?lat=${lat}&lng=${lng}&flood_level=${floodLevel}`);
+    if (!res.ok) return { status: "unavailable", headline: null };
+    return (await res.json()) as Nowcast;
+  } catch {
+    return { status: "unavailable", headline: null };
+  }
+}
+
 export async function assessRisk(
   latitude: number,
   longitude: number,

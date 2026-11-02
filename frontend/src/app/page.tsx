@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ScoreCard from "@/components/ScoreCard";
+import LiveNowcast from "@/components/LiveNowcast";
 import SearchBar from "@/components/SearchBar";
 import ViewSwitcher from "@/components/ViewSwitcher";
 import ChatPanel from "@/components/ChatPanel";
@@ -278,6 +279,10 @@ export default function Home() {
         <div className="card mt-3 p-5" role="alert">
           <p className="text-[15px] leading-relaxed text-[var(--ink-2)]">{error}</p>
         </div>
+      )}
+
+      {!loading && result && result.flood && (
+        <LiveNowcast lat={result.latitude} lng={result.longitude} floodLevel={result.flood.level} />
       )}
 
       {!loading && result && (
