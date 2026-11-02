@@ -282,7 +282,8 @@ export default function Home() {
       )}
 
       {!loading && result && result.flood && (
-        <LiveNowcast lat={result.latitude} lng={result.longitude} floodLevel={result.flood.level} />
+        <LiveNowcast lat={result.latitude} lng={result.longitude} floodLevel={result.flood.level}
+                     region={[result.city.name, result.city.state].filter(Boolean).join(",")} />
       )}
 
       {!loading && result && (

@@ -143,13 +143,18 @@ export interface Nowcast {
   rain_3h_mm?: number;
   intensity?: string;
   observed_at?: string | null;
+  alert?: { title: string; issuer: string; category: string } | null;
 }
 
-/** Live waterlogging signal (rain now x flood susceptibility). Never throws for the caller:
- *  any failure resolves to an unavailable status so the live strip just hides. */
-export async function nowcast(lat: number, lng: number, floodLevel: number): Promise<Nowcast> {
+/** Live waterlogging signal (rain now x flood susceptibility + official alerts). Never
+ *  throws for the caller: any failure resolves to an unavailable status so the strip hides. */
+export async function nowcast(
+  lat: number, lng: number, floodLevel: number, region?: string | null,
+): Promise<Nowcast> {
   try {
-    const res = await fetch(`/api/v1/nowcast?lat=${lat}&lng=${lng}&flood_level=${floodLevel}`);
+    const q = `/api/v1/nowcast?lat=${lat}&lng=${lng}&flood_level=${floodLevel}`
+      + (region ? `&region=${encodeURIComponent(region)}` : "");
+    const res = await fetch(q);
     if (!res.ok) return { status: "unavailable", headline: null };
     return (await res.json()) as Nowcast;
   } catch {

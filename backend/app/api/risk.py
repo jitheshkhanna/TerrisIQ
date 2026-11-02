@@ -11,9 +11,10 @@ router = APIRouter(prefix="/api/v1", tags=["risk"])
 
 
 @router.get("/nowcast")
-def nowcast(lat: float, lng: float, flood_level: int = 3):
-    """Live waterlogging signal: rain falling now x this place's flood susceptibility."""
-    return waterlogging_now(lat, lng, flood_level)
+def nowcast(lat: float, lng: float, flood_level: int = 3, region: str = None):
+    """Live waterlogging signal: rain falling now x this place's flood susceptibility, plus
+    any active official (NDMA/IMD) alert naming the point's `region`."""
+    return waterlogging_now(lat, lng, flood_level, region)
 
 
 def resolve_city(latitude, longitude, slug=None):

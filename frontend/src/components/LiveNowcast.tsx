@@ -21,8 +21,13 @@ function agoLabel(ms: number) {
   return "over an hour ago";
 }
 
-export default function LiveNowcast({ lat, lng, floodLevel }:
-  { lat: number; lng: number; floodLevel: number }) {
+function issuerLabel(issuer?: string) {
+  const m = issuer?.match(/\(([^)]+)\)/);
+  return (m ? m[1] : issuer || "").trim();
+}
+
+export default function LiveNowcast({ lat, lng, floodLevel, region }:
+  { lat: number; lng: number; floodLevel: number; region?: string | null }) {
   const [data, setData] = useState<Nowcast | null>(null);
   const [fetchedAt, setFetchedAt] = useState(0);
   const [, tick] = useState(0);
@@ -31,7 +36,7 @@ export default function LiveNowcast({ lat, lng, floodLevel }:
     let alive = true;
     setData(null); // clear while the new place loads so a stale strip never lingers
     const load = () =>
-      nowcast(lat, lng, floodLevel).then((d) => {
+      nowcast(lat, lng, floodLevel, region).then((d) => {
         if (!alive) return;
         setData(d);
         setFetchedAt(Date.now());
@@ -44,10 +49,11 @@ export default function LiveNowcast({ lat, lng, floodLevel }:
       clearInterval(refresh);
       clearInterval(clock);
     };
-  }, [lat, lng, floodLevel]);
+  }, [lat, lng, floodLevel, region]);
 
   if (!data || data.status === "unavailable" || !data.headline) return null;
   const color = STYLE[data.status];
+  const alert = data.alert;
 
   return (
     <div
@@ -70,13 +76,16 @@ export default function LiveNowcast({ lat, lng, floodLevel }:
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] font-bold uppercase tracking-[0.08em]" style={{ color }}>
-            Live
+            {alert ? "Live · Official alert" : "Live"}
           </span>
           <span className="text-[11.5px] text-[var(--ink-muted)]">· updated {agoLabel(fetchedAt)}</span>
         </div>
-        <p className="mt-0.5 text-[13.5px] font-medium leading-snug text-[var(--ink)]">
+        <p className="mt-0.5 line-clamp-2 text-[13.5px] font-medium leading-snug text-[var(--ink)]">
           {data.headline}
         </p>
+        {alert && issuerLabel(alert.issuer) && (
+          <p className="mt-0.5 text-[11.5px] text-[var(--ink-muted)]">{issuerLabel(alert.issuer)}</p>
+        )}
       </div>
     </div>
   );
