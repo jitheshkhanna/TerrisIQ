@@ -376,31 +376,34 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Map-layers control, top-right, open by default. */}
-      <div className="absolute right-4 top-4 z-30 flex flex-col items-end gap-2 lg:right-6 lg:top-5">
-        <button
-          onClick={() => setShowViews(!showViews)}
-          aria-expanded={showViews}
-          className="floating flex min-h-[var(--tap)] items-center gap-2 px-4 text-[15px]
-                     font-medium text-[var(--ink-2)] transition hover:text-[var(--ink)]"
-        >
-          <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" aria-hidden>
-            <path d="M8 1.8 14.5 5 8 8.2 1.5 5 8 1.8Z M2.6 8.2 8 10.9l5.4-2.7 M2.6 11.2 8 13.9l5.4-2.7"
-                  stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-          </svg>
-          Map
-        </button>
-        {showViews && (
-          <div className="rise w-[260px] sm:w-[280px]">
-            <ViewSwitcher
-              view={view}
-              onChange={setView}
-              showWards={showWards}
-              onWardsChange={setShowWards}
-            />
-          </div>
-        )}
-      </div>
+      {/* Map-layers control, top-right, open by default. Hidden for US points: those hazard
+          layers are Chennai's, with no US equivalent (FEMA is a point lookup, not a tile). */}
+      {city?.slug !== "us" && (
+        <div className="absolute right-4 top-4 z-30 flex flex-col items-end gap-2 lg:right-6 lg:top-5">
+          <button
+            onClick={() => setShowViews(!showViews)}
+            aria-expanded={showViews}
+            className="floating flex min-h-[var(--tap)] items-center gap-2 px-4 text-[15px]
+                       font-medium text-[var(--ink-2)] transition hover:text-[var(--ink)]"
+          >
+            <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" aria-hidden>
+              <path d="M8 1.8 14.5 5 8 8.2 1.5 5 8 1.8Z M2.6 8.2 8 10.9l5.4-2.7 M2.6 11.2 8 13.9l5.4-2.7"
+                    stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+            </svg>
+            Map
+          </button>
+          {showViews && (
+            <div className="rise w-[260px] sm:w-[280px]">
+              <ViewSwitcher
+                view={view}
+                onChange={setView}
+                showWards={showWards}
+                onWardsChange={setShowWards}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Desktop: a floating column over the map; the report button is pinned below the scroll. */}
       <div className="absolute bottom-5 left-6 top-16 z-20 hidden w-[400px] flex-col lg:flex">
