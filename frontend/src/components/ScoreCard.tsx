@@ -237,6 +237,28 @@ export default function ScoreCard({ result }: { result: RiskResult }) {
         )}
       </div>
 
+      {/* Coastal regulation (CRZ) — only when the plot is near the coast. */}
+      {result.crz && (() => {
+        const danger = result.crz.band === "no-development";
+        const c = danger ? "var(--critical)" : "var(--warning)";
+        return (
+          <div className="mt-3 flex items-start gap-2.5 rounded-xl border px-3 py-2.5"
+               style={{ background: `color-mix(in srgb, ${c} 8%, var(--surface))`,
+                        borderColor: `color-mix(in srgb, ${c} 26%, transparent)` }}>
+            <svg viewBox="0 0 16 16" className="mt-0.5 h-4 w-4 shrink-0" style={{ color: c }} aria-hidden>
+              <path d="M1 11c2-1.4 3-1.4 5 0s3 1.4 5 0 3-1.4 5 0M3 7.5 8 2l5 5.5"
+                    stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinecap="round"
+                    strokeLinejoin="round" />
+            </svg>
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold text-[var(--ink)]">Coastal regulation (CRZ)</p>
+              <p className="mt-0.5 text-[12.5px] leading-snug text-[var(--ink-2)]">{result.crz.headline}</p>
+              <p className="mt-0.5 text-[11.5px] leading-snug text-[var(--ink-muted)]">{result.crz.note}</p>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* 2. About what? */}
       <div className="mt-3 divide-y divide-[var(--hairline)] border-t border-[var(--hairline)]">
         <Row kind="flood" title="Flooding" block={result.flood} />

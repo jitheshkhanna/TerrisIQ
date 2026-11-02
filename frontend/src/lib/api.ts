@@ -92,6 +92,8 @@ export interface RiskResult {
   weights: Record<string, number>;
   base_weights: Record<string, number>;
   unavailable_dimensions: string[];
+  /** Coastal Regulation Zone screening (distance-to-coast proxy); null inland. */
+  crz: { applicable: boolean; band: string; distance_m: number; headline: string; note: string } | null;
   coverage_note: string | null;
   evidence_ceiling_applied: boolean;
   evidence_ceiling_reason: string | null;

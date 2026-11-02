@@ -7,6 +7,7 @@ import h3
 from app.core import config as cfg
 from app.engines.administrative import resolve_administrative
 from app.engines.contamination import calculate_contamination_risk
+from app.engines.crz import crz_screen
 from app.engines.flood import calculate_flood_risk
 from app.engines.scarcity import calculate_scarcity_risk
 
@@ -201,6 +202,7 @@ def assess(city, latitude, longitude, address=None, use_cache=True):
         "weights": {k: round(v, 3) for k, v in weights.items()},
         "base_weights": BASE_WEIGHTS,
         "unavailable_dimensions": unavailable,
+        "crz": crz_screen(city, latitude, longitude),
         "coverage_note": DEPTH_BLURB.get(city.depth),
         "h3_cell": cell,
         "cached": False,

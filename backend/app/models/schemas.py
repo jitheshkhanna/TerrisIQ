@@ -105,6 +105,8 @@ class RiskResponse(BaseModel):
         ..., description="Renormalised over the dimensions this city can actually score")
     base_weights: Dict[str, float]
     unavailable_dimensions: List[str] = []
+    crz: Optional[Dict[str, Any]] = Field(
+        None, description="Coastal Regulation Zone screening (distance-to-coast proxy); null inland")
     coverage_note: Optional[str] = None
     h3_cell: Optional[str] = None
     cached: bool = False
