@@ -417,6 +417,63 @@ export async function fetchScenes(lat: number, lng: number): Promise<Scene[]> {
   }
 }
 
+// --- Cadastral: consented document parse (Patta / EC / FMB) -------------------------------
+
+export interface DocFields {
+  district?: string | null;
+  taluk?: string | null;
+  village?: string | null;
+  survey_number?: string | null;
+  sub_division?: string | null;
+  old_survey_numbers?: string[] | null;
+  owner_names?: string[] | null;
+  document_number?: string | null;
+  execution_date?: string | null;
+  transaction_value_inr?: string | number | null;
+  mortgages?: { created?: string | null; released?: string | null }[] | null;
+  boundaries?: { north?: string; south?: string; east?: string; west?: string } | null;
+  language?: string | null;
+}
+
+export interface DocParseResult {
+  doc_type: string;
+  parser: string;
+  fields: DocFields | null;
+  text_excerpt: string | null;
+  note: string | null;
+  disclaimer: string;
+}
+
+export type DocType = "patta" | "chitta" | "tslr" | "ec" | "sale_deed" | "fmb" | "other";
+
+/** Read a File as base64 (no data: prefix), for the JSON upload body. */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => {
+      const s = String(r.result);
+      resolve(s.includes(",") ? s.slice(s.indexOf(",") + 1) : s);
+    };
+    r.onerror = () => reject(new Error("Could not read the file."));
+    r.readAsDataURL(file);
+  });
+}
+
+export async function parseDocument(
+  file: File, docType: DocType, consent: boolean,
+): Promise<DocParseResult> {
+  const content_base64 = await fileToBase64(file);
+  const res = await fetch("/api/v1/cadastral/upload-documents", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      filename: file.name, content_base64, doc_type: docType,
+      mime_type: file.type || "application/pdf", consent,
+    }),
+  });
+  return asJson<DocParseResult>(res);
+}
+
 export const DEPTH_LABEL: Record<CityDepth, string> = {
   deep: "Full flood survey",
   moderate: "Partial data",

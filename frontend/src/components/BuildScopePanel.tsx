@@ -1,10 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   buildScope, downloadLayout, ulpinLookup,
   type BuildScope, type BuildScopeInput, type BuildUse, type UlpinResult,
 } from "@/lib/api";
+
+/** Values carried over from the active scored location. `key` is the lat,lng signature so the
+ *  panel re-seeds only when the user actually scores a new point, never on every re-render. */
+export interface BuildScopePrefill {
+  key: string;
+  groundElevM: number | null;
+  cityName: string | null;
+  flags: Record<string, boolean>;
+  triggers: string[];
+}
 
 /* Build Scope — the TNCDBR development-potential calculator.
  * Pure-input, pure-output: no map or scored point needed, so it stands alone. Every number
@@ -170,17 +180,29 @@ function UlpinField() {
   );
 }
 
-export default function BuildScopePanel() {
+export default function BuildScopePanel({ prefill }: { prefill?: BuildScopePrefill }) {
   const [use, setUse] = useState<BuildUse>("residential");
   const [area, setArea] = useState("");
   const [road, setRoad] = useState("");
   const [height, setHeight] = useState("");
   const [pte, setPte] = useState("");
   const [ground, setGround] = useState("");
+  const [flags, setFlags] = useState<Record<string, boolean>>({});
+  const [triggers, setTriggers] = useState<string[]>([]);
+  const [fromCity, setFromCity] = useState<string | null>(null);
   const [result, setResult] = useState<BuildScope | null>(null);
   const [lastInput, setLastInput] = useState<BuildScopeInput | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Re-seed ground elevation and NOC flags whenever the user scores a new location.
+  useEffect(() => {
+    if (!prefill) return;
+    setFlags(prefill.flags);
+    setTriggers(prefill.triggers);
+    setFromCity(prefill.cityName);
+    if (prefill.groundElevM != null) setGround(String(prefill.groundElevM));
+  }, [prefill?.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const run = async () => {
     const a = num(area), r = num(road);
@@ -189,6 +211,7 @@ export default function BuildScopePanel() {
     const input: BuildScopeInput = {
       plot_area_sqm: a, road_width_m: r, use,
       proposed_height_m: num(height), pte_amsl_m: num(pte), ground_elev_amsl_m: num(ground),
+      flags: Object.keys(flags).length ? flags : undefined,
     };
     setError(null);
     setBusy(true);
@@ -211,6 +234,26 @@ export default function BuildScopePanel() {
         Indicative development potential (TNCDBR) — FSI, setbacks, height caps, NOCs and a
         downloadable layout. Screening estimate; verify with the planning authority.
       </p>
+
+      {(fromCity || triggers.length > 0) && (
+        <div className="mt-3 rounded-xl bg-[var(--plane)] px-3 py-2.5">
+          <p className="text-[12px] text-[var(--ink-2)]">
+            Pre-filled from the scored location{fromCity ? ` in ${fromCity}` : ""}: ground
+            elevation and NOC triggers below.
+          </p>
+          {triggers.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {triggers.map((t) => (
+                <span key={t} className="inline-flex items-center gap-1.5 rounded-full
+                                         bg-[var(--surface)] px-2.5 py-1 text-[12px] text-[var(--ink)]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--warning)]" aria-hidden />
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="mt-4 space-y-3">
         <UlpinField />
