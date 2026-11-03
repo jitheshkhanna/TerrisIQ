@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ScoreCard from "@/components/ScoreCard";
+import BuildScopePanel from "@/components/BuildScopePanel";
 import LiveNowcast from "@/components/LiveNowcast";
 import SearchBar from "@/components/SearchBar";
 import ViewSwitcher from "@/components/ViewSwitcher";
@@ -289,6 +290,12 @@ export default function Home() {
       {!loading && result && (
         <div className="card mt-3 p-5">
           <ScoreCard result={result} />
+        </div>
+      )}
+
+      {!loading && result && (
+        <div className="mt-3">
+          <BuildScopePanel />
         </div>
       )}
 

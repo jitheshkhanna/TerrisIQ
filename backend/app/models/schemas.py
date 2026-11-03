@@ -114,6 +114,33 @@ class RiskResponse(BaseModel):
     disclaimer: str
 
 
+class BuildScopeRequest(BaseModel):
+    """Inputs for the Build Scope (TNCDBR) development-potential calculator. All pure
+    arithmetic over user-supplied values — no parcel geometry or spatial data required."""
+    plot_area_sqm: float = Field(..., gt=0, le=10_000_000,
+                                 description="Plot area in square metres")
+    road_width_m: float = Field(..., ge=0, le=200,
+                                description="Abutting road width in metres (drives premium FSI)")
+    use: str = Field("residential",
+                     description="residential | commercial | mixed | industrial | "
+                                 "institutional | plotted_layout")
+    proposed_height_m: Optional[float] = Field(None, ge=0, le=1000)
+    plot_width_m: Optional[float] = Field(None, gt=0, le=10000,
+                                          description="Frontage, for the layout export")
+    plot_depth_m: Optional[float] = Field(None, gt=0, le=10000,
+                                          description="Depth, for the layout export")
+    pte_amsl_m: Optional[float] = Field(
+        None, description="AAI permissible top elevation (m AMSL), from AAI NOCAS")
+    ground_elev_amsl_m: Optional[float] = Field(
+        None, description="Ground elevation at the plot (m AMSL)")
+    haca_cap_m: Optional[float] = Field(None, ge=0, le=1000,
+                                        description="Hill Area Conservation Authority height cap")
+    flags: Optional[Dict[str, bool]] = Field(
+        None, description="Location-declared NOC triggers: near_coast, near_water_body, "
+                          "near_storm_drain, near_monument, near_defence_airbase, "
+                          "near_metro_or_rail")
+
+
 class GeocodeResult(BaseModel):
     label: str = Field(..., description="What the user searched for, e.g. '100 Feet Road'")
     context: str = Field("", description="Where it is, e.g. 'Velachery, Chennai 600042'")

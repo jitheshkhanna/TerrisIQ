@@ -318,6 +318,105 @@ export function reportUrl(
   return `/api/v1/report?${params.toString()}`;
 }
 
+// --- Cadastral: Build Scope (TNCDBR) calculator -------------------------------------------
+
+export type BuildUse =
+  | "residential" | "commercial" | "mixed" | "industrial" | "institutional" | "plotted_layout";
+
+export interface BuildScopeInput {
+  plot_area_sqm: number;
+  road_width_m: number;
+  use: BuildUse;
+  proposed_height_m?: number | null;
+  plot_width_m?: number | null;
+  plot_depth_m?: number | null;
+  pte_amsl_m?: number | null;
+  ground_elev_amsl_m?: number | null;
+  haca_cap_m?: number | null;
+  flags?: Record<string, boolean>;
+}
+
+export interface Noc { authority: string; required: boolean; reason: string }
+
+export interface BuildScope {
+  fsi: { normal: number; premium_added: number; max_with_premium: number; basis: string };
+  ground_coverage: { fraction: number; max_footprint_sqm: number; basis: string };
+  built_up_area_sqm: { at_normal_fsi: number; at_premium_fsi: number };
+  setbacks: { regime: string; front_m: number; side1_m: number; side2_m: number; rear_m: number; basis: string };
+  osr: { required: boolean; area_sqm: number; basis: string };
+  parking: { car_equivalent_spaces: number; basis: string };
+  height: {
+    aai_net_permissible_agl_m: number | null; haca_cap_m: number | null;
+    net_permissible_m: number | null; constrained_by: string | null; basis: string;
+  };
+  yield: { approx_dwelling_units: number | null; dwelling_sqm_assumed: number | null };
+  noc_checklist: Noc[];
+  disclaimer: string;
+}
+
+export interface BuildScopeResponse { scope: BuildScope; layout_geojson: unknown }
+
+export async function buildScope(input: BuildScopeInput): Promise<BuildScopeResponse> {
+  const res = await fetch("/api/v1/cadastral/build-scope", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return asJson<BuildScopeResponse>(res);
+}
+
+/** Download the layout as DXF or GeoJSON. Posts the same inputs and saves the response. */
+export async function downloadLayout(input: BuildScopeInput, format: "dxf" | "geojson"): Promise<void> {
+  let blob: Blob;
+  if (format === "dxf") {
+    const res = await fetch("/api/v1/cadastral/build-scope/layout.dxf", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+    });
+    if (!res.ok) throw new Error("Could not generate the DXF.");
+    blob = await res.blob();
+  } else {
+    const r = await buildScope(input);
+    blob = new Blob([JSON.stringify(r.layout_geojson, null, 2)], { type: "application/geo+json" });
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `terrisiq_build_scope.${format === "dxf" ? "dxf" : "geojson"}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export interface UlpinResult {
+  ulpin: string; valid_format: boolean; resolved: boolean; message: string; next_step: string;
+}
+
+export async function ulpinLookup(code: string): Promise<UlpinResult> {
+  const res = await fetch(`/api/v1/cadastral/ulpin/${encodeURIComponent(code)}`);
+  return asJson<UlpinResult>(res);
+}
+
+// --- Evidence: real satellite scene provenance (STAC over HTTP) ---------------------------
+
+export interface Scene {
+  granule_id: string | null; collection: string | null; datetime: string | null;
+  platform: string | null; instrument: string | null; cloud_cover_pct: number | null;
+}
+
+/** Recent public Sentinel scenes covering a point. Never throws: returns [] on any failure
+ *  so the Evidence drawer degrades gracefully. */
+export async function fetchScenes(lat: number, lng: number): Promise<Scene[]> {
+  try {
+    const res = await fetch(`/api/v1/evidence/scenes?lat=${lat}&lng=${lng}`);
+    if (!res.ok) return [];
+    const body = (await res.json()) as { scenes: Scene[] };
+    return body.scenes ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export const DEPTH_LABEL: Record<CityDepth, string> = {
   deep: "Full flood survey",
   moderate: "Partial data",

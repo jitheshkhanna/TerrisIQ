@@ -7,7 +7,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.api import chat, geocode, layers, report, risk
+from app.api import cadastral, chat, documents, evidence, geocode, layers, report, risk
 from app.core import config as cfg
 from app.core import cities as city_registry
 from app.core.geo import CACHE_DIR, get_store, loaded_slugs
@@ -57,6 +57,9 @@ app.include_router(geocode.router)
 app.include_router(layers.router)
 app.include_router(report.router)
 app.include_router(chat.router)
+app.include_router(cadastral.router)
+app.include_router(documents.router)
+app.include_router(evidence.router)
 
 
 @app.on_event("startup")

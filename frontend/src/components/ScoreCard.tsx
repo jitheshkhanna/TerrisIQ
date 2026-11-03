@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { type Fact, type RiskResult, type RiskScore } from "@/lib/api";
 import { gradeFill, gradeText, gradeTrack } from "@/lib/design";
+import EvidenceDrawer from "@/components/EvidenceDrawer";
 
 /* The card answers three questions in the order people ask them:
  *   1. Should I worry?        -> one verdict word and a 5-step meter
@@ -268,6 +269,9 @@ export default function ScoreCard({ result }: { result: RiskResult }) {
 
       {/* 3. Everything else, on request */}
       <Details result={result} />
+
+      {/* 4. Engineering, cadastral & underwriting evidence — units + sources + live scenes */}
+      <EvidenceDrawer result={result} />
     </div>
   );
 }
