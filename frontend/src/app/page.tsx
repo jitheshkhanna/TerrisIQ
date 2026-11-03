@@ -11,11 +11,14 @@ import ViewSwitcher from "@/components/ViewSwitcher";
 import ChatPanel from "@/components/ChatPanel";
 import {
   assessRisk,
+  crossVerifyDocuments,
   fullLabel,
   listCities,
   reportUrl,
   reverseGeocode,
   type City,
+  type DocParseResult,
+  type DocType,
   type RiskResult,
 } from "@/lib/api";
 import type { MapView } from "@/lib/design";
@@ -82,8 +85,12 @@ export default function Home() {
   const [showWards, setShowWards] = useState(false);
   const [showViews, setShowViews] = useState(true);
   const [locating, setLocating] = useState(false);
+  // Parsed cadastral documents, keyed by type, so a Patta + an EC accumulate and cross-check.
+  const [docResults, setDocResults] = useState<Partial<Record<DocType, DocParseResult>>>({});
   // Ensures the ?lat&lng deep link (opened from the browser extension) scores only once.
   const deepLinkRef = useRef(false);
+
+  const crossCheck = useMemo(() => crossVerifyDocuments(docResults), [docResults]);
 
   // Carry the scored location into Build Scope: ground elevation (G) and the NOC triggers the
   // spatial engine already knows about (CRZ coast, waterbody, storm drain). Memoised so the
@@ -316,7 +323,7 @@ export default function Home() {
 
       {!loading && result && (
         <div className="card mt-3 p-5">
-          <ScoreCard result={result} />
+          <ScoreCard result={result} crossCheck={crossCheck} />
         </div>
       )}
 
@@ -328,7 +335,9 @@ export default function Home() {
 
       {!loading && result && (
         <div className="mt-3">
-          <DocumentUploadPanel />
+          <DocumentUploadPanel
+            onParsed={(docType, parsed) => setDocResults((prev) => ({ ...prev, [docType]: parsed }))}
+          />
         </div>
       )}
 

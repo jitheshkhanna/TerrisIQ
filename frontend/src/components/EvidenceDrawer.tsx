@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchScenes, type RiskResult, type Scene } from "@/lib/api";
+import { fetchScenes, type CrossCheck, type MatchStatus, type RiskResult, type Scene } from "@/lib/api";
 
 /* "Engineering, Cadastral & Underwriting Evidence" drawer.
  * Re-exposes what we already computed with explicit units and a source for every line, and
@@ -61,7 +61,59 @@ function Scenes({ lat, lng }: { lat: number; lng: number }) {
   );
 }
 
-export default function EvidenceDrawer({ result }: { result: RiskResult }) {
+const STATUS_COLOR: Record<MatchStatus, string> = {
+  match: "var(--good)", mismatch: "var(--critical)", unknown: "var(--edge)",
+};
+const STATUS_WORD: Record<MatchStatus, string> = {
+  match: "Match", mismatch: "Mismatch", unknown: "Need more",
+};
+
+function CheckRow({ label, status, detail }: { label: string; status: MatchStatus; detail: string }) {
+  return (
+    <div className="flex items-start gap-2.5 py-2">
+      <span className="mt-1 h-2 w-2 shrink-0 rounded-full" style={{ background: STATUS_COLOR[status] }}
+            aria-hidden />
+      <div className="min-w-0">
+        <p className="text-[13px] font-medium text-[var(--ink)]">
+          {label} <span className="font-normal" style={{ color: STATUS_COLOR[status] }}>· {STATUS_WORD[status]}</span>
+        </p>
+        <p className="text-[11.5px] leading-snug text-[var(--ink-muted)]">{detail}</p>
+      </div>
+    </div>
+  );
+}
+
+function CrossVerify({ check }: { check: CrossCheck }) {
+  return (
+    <div>
+      <p className="text-[13px] font-semibold text-[var(--ink)]">Title cross-verification</p>
+      <p className="mb-1 text-[11.5px] text-[var(--ink-muted)]">
+        From your uploaded documents ({check.haveDocs.join(", ")}). Screening checks — verify
+        originals and CERSAI/registration records.
+      </p>
+      <div className="divide-y divide-[var(--hairline)]">
+        {check.ownerMatch && (
+          <CheckRow label="Patta owner vs. EC/deed party" status={check.ownerMatch.status}
+                    detail={check.ownerMatch.owner && check.ownerMatch.buyer
+                      ? `${check.ownerMatch.owner} ↔ ${check.ownerMatch.buyer} — ${check.ownerMatch.note}`
+                      : check.ownerMatch.note} />
+        )}
+        {check.surveyParity && (
+          <CheckRow label="Survey-number parity" status={check.surveyParity.status}
+                    detail={`${check.surveyParity.values.join(" vs ")} — ${check.surveyParity.note}`} />
+        )}
+        {check.mortgages && (
+          <CheckRow label="Encumbrance (mortgage) chain"
+                    status={check.mortgages.unreleased ? "mismatch" : "match"}
+                    detail={check.mortgages.note} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function EvidenceDrawer({ result, crossCheck }:
+  { result: RiskResult; crossCheck?: CrossCheck | null }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -107,6 +159,8 @@ export default function EvidenceDrawer({ result }: { result: RiskResult }) {
             <Line label="SAR flood recurrence Φ" value="Phase B"
                   source="OPERA DSWx / NISAR GCOV stack — orbital pipeline pending" />
           </div>
+
+          {crossCheck && <CrossVerify check={crossCheck} />}
 
           <div>
             <p className="text-[13px] font-semibold text-[var(--ink)]">Satellite coverage (live)</p>

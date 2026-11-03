@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { type Fact, type RiskResult, type RiskScore } from "@/lib/api";
+import { type CrossCheck, type Fact, type RiskResult, type RiskScore } from "@/lib/api";
 import { gradeFill, gradeText, gradeTrack } from "@/lib/design";
 import EvidenceDrawer from "@/components/EvidenceDrawer";
 
@@ -197,7 +197,8 @@ function Details({ result }: { result: RiskResult }) {
   );
 }
 
-export default function ScoreCard({ result }: { result: RiskResult }) {
+export default function ScoreCard({ result, crossCheck }:
+  { result: RiskResult; crossCheck?: CrossCheck | null }) {
   const admin = result.administrative;
   const adjusted = result.grade_floor_applied
     ? "Raised: one serious issue"
@@ -271,7 +272,7 @@ export default function ScoreCard({ result }: { result: RiskResult }) {
       <Details result={result} />
 
       {/* 4. Engineering, cadastral & underwriting evidence — units + sources + live scenes */}
-      <EvidenceDrawer result={result} />
+      <EvidenceDrawer result={result} crossCheck={crossCheck} />
     </div>
   );
 }

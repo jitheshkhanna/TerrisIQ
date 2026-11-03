@@ -68,7 +68,9 @@ function Extracted({ fields }: { fields: DocFields }) {
   );
 }
 
-export default function DocumentUploadPanel() {
+export default function DocumentUploadPanel(
+  { onParsed }: { onParsed?: (docType: DocType, result: DocParseResult) => void } = {},
+) {
   const [docType, setDocType] = useState<DocType>("patta");
   const [file, setFile] = useState<File | null>(null);
   const [consent, setConsent] = useState(false);
@@ -90,7 +92,9 @@ export default function DocumentUploadPanel() {
     setBusy(true);
     setError(null);
     try {
-      setRes(await parseDocument(file, docType, consent));
+      const parsed = await parseDocument(file, docType, consent);
+      setRes(parsed);
+      if (parsed.fields) onParsed?.(docType, parsed);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not parse the document.");
     } finally {

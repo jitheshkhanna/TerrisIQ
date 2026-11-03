@@ -474,6 +474,112 @@ export async function parseDocument(
   return asJson<DocParseResult>(res);
 }
 
+// --- Cadastral: title cross-verification across uploaded documents -----------------------
+
+export type MatchStatus = "match" | "mismatch" | "unknown";
+
+export interface CrossCheck {
+  haveDocs: DocType[];
+  ownerMatch: { status: MatchStatus; score: number; owner?: string; buyer?: string; note: string } | null;
+  surveyParity: { status: MatchStatus; values: string[]; note: string } | null;
+  mortgages: { total: number; unreleased: number; note: string } | null;
+}
+
+const _HONORIFICS = new Set([
+  "thiru", "tmt", "selvi", "mr", "mrs", "ms", "sri", "smt", "kumari", "late",
+  "s/o", "d/o", "w/o", "son", "daughter", "wife", "of",
+]);
+
+/** Normalise an Indian name for screening comparison: lowercase, drop punctuation and common
+ *  honorifics/relations, collapse whitespace. Not transliteration-aware (Tamil phonetics are a
+ *  Phase-B refinement) — a screening signal, labelled as approximate. */
+function normalizeName(raw: string): string[] {
+  return raw.toLowerCase().replace(/[^a-z\s/]/g, " ").split(/\s+/)
+    .filter((t) => t && !_HONORIFICS.has(t));
+}
+
+/** Dice coefficient over name tokens: 0 (no overlap) to 1 (identical token sets). */
+function nameSimilarity(a: string, b: string): number {
+  const ta = new Set(normalizeName(a));
+  const tb = new Set(normalizeName(b));
+  if (ta.size === 0 || tb.size === 0) return 0;
+  let inter = 0;
+  for (const t of ta) if (tb.has(t)) inter++;
+  return (2 * inter) / (ta.size + tb.size);
+}
+
+const _MATCH = 0.5; // token-set threshold for a screening "match"
+
+function bestNameMatch(owners: string[], buyers: string[]) {
+  let best = { score: 0, owner: "", buyer: "" };
+  for (const o of owners) for (const b of buyers) {
+    const s = nameSimilarity(o, b);
+    if (s > best.score) best = { score: s, owner: o, buyer: b };
+  }
+  return best;
+}
+
+function normalizeSurvey(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, "").replace(/[^0-9a-z/]/g, "");
+}
+
+/** Cross-verify the documents collected so far. A Patta/Chitta/TSLR supplies the owner; an EC
+ *  or sale deed supplies the buyer and the mortgage chain. Returns null until at least one
+ *  parsed document with fields is present. */
+export function crossVerifyDocuments(docs: Partial<Record<DocType, DocParseResult>>): CrossCheck | null {
+  const have = (Object.keys(docs) as DocType[]).filter((k) => docs[k]?.fields);
+  if (have.length === 0) return null;
+
+  const owner = docs.patta?.fields ?? docs.chitta?.fields ?? docs.tslr?.fields ?? null;
+  const buyerDoc = docs.ec?.fields ?? docs.sale_deed?.fields ?? null;
+
+  // Owner (Patta) vs buyer (EC/deed) name.
+  let ownerMatch: CrossCheck["ownerMatch"] = null;
+  if (owner?.owner_names?.length && buyerDoc?.owner_names?.length) {
+    const b = bestNameMatch(owner.owner_names, buyerDoc.owner_names);
+    const status: MatchStatus = b.score >= _MATCH ? "match" : "mismatch";
+    ownerMatch = {
+      status, score: Math.round(b.score * 100) / 100, owner: b.owner, buyer: b.buyer,
+      note: status === "match"
+        ? "Patta owner and EC/deed party appear to be the same person (approximate match)."
+        : "Patta owner and EC/deed party do not clearly match — verify the chain of title.",
+    };
+  } else if (owner || buyerDoc) {
+    ownerMatch = { status: "unknown", score: 0,
+      note: "Upload both a Patta/Chitta and an EC or sale deed to cross-check owner vs. buyer." };
+  }
+
+  // Survey-number parity across whatever documents carry one.
+  const surveys = have
+    .map((k) => docs[k]?.fields?.survey_number)
+    .filter((v): v is string => !!v);
+  let surveyParity: CrossCheck["surveyParity"] = null;
+  if (surveys.length >= 2) {
+    const norm = new Set(surveys.map(normalizeSurvey));
+    const status: MatchStatus = norm.size === 1 ? "match" : "mismatch";
+    surveyParity = { status, values: surveys,
+      note: status === "match"
+        ? "Survey numbers agree across the uploaded documents."
+        : "Survey numbers differ across documents — confirm they describe the same plot." };
+  } else if (surveys.length === 1) {
+    surveyParity = { status: "unknown", values: surveys,
+      note: "Only one document carries a survey number; upload another to cross-check parity." };
+  }
+
+  // Encumbrances from the EC/deed mortgage chain.
+  let mortgages: CrossCheck["mortgages"] = null;
+  const ms = buyerDoc?.mortgages ?? owner?.mortgages ?? [];
+  if (ms.length) {
+    const unreleased = ms.filter((m) => m?.created && !m?.released).length;
+    mortgages = { total: ms.length, unreleased,
+      note: unreleased
+        ? `${unreleased} mortgage(s) with no recorded release — a live encumbrance; confirm against CERSAI.`
+        : "All recorded mortgages show a release." };
+  }
+
+  return { haveDocs: have, ownerMatch, surveyParity, mortgages };
+}
+
 export const DEPTH_LABEL: Record<CityDepth, string> = {
   deep: "Full flood survey",
   moderate: "Partial data",
