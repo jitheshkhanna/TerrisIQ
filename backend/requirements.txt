@@ -13,3 +13,5 @@ numpy==2.0.2
 h3==4.4.2
 httpx==0.28.1
 reportlab==5.0.1
+# Pure-Python PDF text extraction for consented cadastral document uploads (~1 MB, no C deps).
+pypdf==5.1.0

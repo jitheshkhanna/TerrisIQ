@@ -1,19 +1,24 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ScoreCard from "@/components/ScoreCard";
+import BuildScopePanel, { type BuildScopePrefill } from "@/components/BuildScopePanel";
+import DocumentUploadPanel from "@/components/DocumentUploadPanel";
 import LiveNowcast from "@/components/LiveNowcast";
 import SearchBar from "@/components/SearchBar";
 import ViewSwitcher from "@/components/ViewSwitcher";
 import ChatPanel from "@/components/ChatPanel";
 import {
   assessRisk,
+  crossVerifyDocuments,
   fullLabel,
   listCities,
   reportUrl,
   reverseGeocode,
   type City,
+  type DocParseResult,
+  type DocType,
   type RiskResult,
 } from "@/lib/api";
 import type { MapView } from "@/lib/design";
@@ -80,8 +85,38 @@ export default function Home() {
   const [showWards, setShowWards] = useState(false);
   const [showViews, setShowViews] = useState(true);
   const [locating, setLocating] = useState(false);
+  // Parsed cadastral documents, keyed by type, so a Patta + an EC accumulate and cross-check.
+  const [docResults, setDocResults] = useState<Partial<Record<DocType, DocParseResult>>>({});
   // Ensures the ?lat&lng deep link (opened from the browser extension) scores only once.
   const deepLinkRef = useRef(false);
+
+  const crossCheck = useMemo(() => crossVerifyDocuments(docResults), [docResults]);
+
+  // Carry the scored location into Build Scope: ground elevation (G) and the NOC triggers the
+  // spatial engine already knows about (CRZ coast, waterbody, storm drain). Memoised so the
+  // panel re-seeds only when the point changes, not on every render.
+  const buildPrefill = useMemo<BuildScopePrefill | undefined>(() => {
+    if (!result) return undefined;
+    const d = result.flood?.details as {
+      elevation?: { elevation_m?: number };
+      waterbody?: { nearest_waterbody_m?: number };
+      drainage?: { nearest_drain_m?: number };
+    } | undefined;
+    const elev = d?.elevation?.elevation_m;
+    const wb = d?.waterbody?.nearest_waterbody_m;
+    const drain = d?.drainage?.nearest_drain_m;
+    const flags: Record<string, boolean> = {};
+    const triggers: string[] = [];
+    if (result.crz) { flags.near_coast = true; triggers.push(`CRZ ~${result.crz.distance_m} m to coast`); }
+    if (typeof wb === "number" && wb <= 50) { flags.near_water_body = true; triggers.push(`Water body ${wb} m`); }
+    if (typeof drain === "number" && drain <= 50) { flags.near_storm_drain = true; triggers.push(`Storm drain ${drain} m`); }
+    return {
+      key: `${result.latitude.toFixed(5)},${result.longitude.toFixed(5)}`,
+      groundElevM: typeof elev === "number" ? elev : null,
+      cityName: result.city?.name ?? null,
+      flags, triggers,
+    };
+  }, [result]);
 
   useEffect(() => {
     listCities()
@@ -288,7 +323,21 @@ export default function Home() {
 
       {!loading && result && (
         <div className="card mt-3 p-5">
-          <ScoreCard result={result} />
+          <ScoreCard result={result} crossCheck={crossCheck} />
+        </div>
+      )}
+
+      {!loading && result && (
+        <div className="mt-3">
+          <BuildScopePanel prefill={buildPrefill} />
+        </div>
+      )}
+
+      {!loading && result && (
+        <div className="mt-3">
+          <DocumentUploadPanel
+            onParsed={(docType, parsed) => setDocResults((prev) => ({ ...prev, [docType]: parsed }))}
+          />
         </div>
       )}
 

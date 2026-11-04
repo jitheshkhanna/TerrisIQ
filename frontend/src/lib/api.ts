@@ -318,6 +318,268 @@ export function reportUrl(
   return `/api/v1/report?${params.toString()}`;
 }
 
+// --- Cadastral: Build Scope (TNCDBR) calculator -------------------------------------------
+
+export type BuildUse =
+  | "residential" | "commercial" | "mixed" | "industrial" | "institutional" | "plotted_layout";
+
+export interface BuildScopeInput {
+  plot_area_sqm: number;
+  road_width_m: number;
+  use: BuildUse;
+  proposed_height_m?: number | null;
+  plot_width_m?: number | null;
+  plot_depth_m?: number | null;
+  pte_amsl_m?: number | null;
+  ground_elev_amsl_m?: number | null;
+  haca_cap_m?: number | null;
+  flags?: Record<string, boolean>;
+}
+
+export interface Noc { authority: string; required: boolean; reason: string }
+
+export interface BuildScope {
+  fsi: { normal: number; premium_added: number; max_with_premium: number; basis: string };
+  ground_coverage: { fraction: number; max_footprint_sqm: number; basis: string };
+  built_up_area_sqm: { at_normal_fsi: number; at_premium_fsi: number };
+  setbacks: { regime: string; front_m: number; side1_m: number; side2_m: number; rear_m: number; basis: string };
+  osr: { required: boolean; area_sqm: number; basis: string };
+  parking: { car_equivalent_spaces: number; basis: string };
+  height: {
+    aai_net_permissible_agl_m: number | null; haca_cap_m: number | null;
+    net_permissible_m: number | null; constrained_by: string | null; basis: string;
+  };
+  yield: { approx_dwelling_units: number | null; dwelling_sqm_assumed: number | null };
+  noc_checklist: Noc[];
+  disclaimer: string;
+}
+
+export interface BuildScopeResponse { scope: BuildScope; layout_geojson: unknown }
+
+export async function buildScope(input: BuildScopeInput): Promise<BuildScopeResponse> {
+  const res = await fetch("/api/v1/cadastral/build-scope", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return asJson<BuildScopeResponse>(res);
+}
+
+/** Download the layout as DXF or GeoJSON. Posts the same inputs and saves the response. */
+export async function downloadLayout(input: BuildScopeInput, format: "dxf" | "geojson"): Promise<void> {
+  let blob: Blob;
+  if (format === "dxf") {
+    const res = await fetch("/api/v1/cadastral/build-scope/layout.dxf", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+    });
+    if (!res.ok) throw new Error("Could not generate the DXF.");
+    blob = await res.blob();
+  } else {
+    const r = await buildScope(input);
+    blob = new Blob([JSON.stringify(r.layout_geojson, null, 2)], { type: "application/geo+json" });
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `terrisiq_build_scope.${format === "dxf" ? "dxf" : "geojson"}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export interface UlpinResult {
+  ulpin: string; valid_format: boolean; resolved: boolean; message: string; next_step: string;
+}
+
+export async function ulpinLookup(code: string): Promise<UlpinResult> {
+  const res = await fetch(`/api/v1/cadastral/ulpin/${encodeURIComponent(code)}`);
+  return asJson<UlpinResult>(res);
+}
+
+// --- Evidence: real satellite scene provenance (STAC over HTTP) ---------------------------
+
+export interface Scene {
+  granule_id: string | null; collection: string | null; datetime: string | null;
+  platform: string | null; instrument: string | null; cloud_cover_pct: number | null;
+}
+
+/** Recent public Sentinel scenes covering a point. Never throws: returns [] on any failure
+ *  so the Evidence drawer degrades gracefully. */
+export async function fetchScenes(lat: number, lng: number): Promise<Scene[]> {
+  try {
+    const res = await fetch(`/api/v1/evidence/scenes?lat=${lat}&lng=${lng}`);
+    if (!res.ok) return [];
+    const body = (await res.json()) as { scenes: Scene[] };
+    return body.scenes ?? [];
+  } catch {
+    return [];
+  }
+}
+
+// --- Cadastral: consented document parse (Patta / EC / FMB) -------------------------------
+
+export interface DocFields {
+  district?: string | null;
+  taluk?: string | null;
+  village?: string | null;
+  survey_number?: string | null;
+  sub_division?: string | null;
+  old_survey_numbers?: string[] | null;
+  owner_names?: string[] | null;
+  document_number?: string | null;
+  execution_date?: string | null;
+  transaction_value_inr?: string | number | null;
+  mortgages?: { created?: string | null; released?: string | null }[] | null;
+  boundaries?: { north?: string; south?: string; east?: string; west?: string } | null;
+  language?: string | null;
+}
+
+export interface DocParseResult {
+  doc_type: string;
+  parser: string;
+  fields: DocFields | null;
+  text_excerpt: string | null;
+  note: string | null;
+  disclaimer: string;
+}
+
+export type DocType = "patta" | "chitta" | "tslr" | "ec" | "sale_deed" | "fmb" | "other";
+
+/** Read a File as base64 (no data: prefix), for the JSON upload body. */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => {
+      const s = String(r.result);
+      resolve(s.includes(",") ? s.slice(s.indexOf(",") + 1) : s);
+    };
+    r.onerror = () => reject(new Error("Could not read the file."));
+    r.readAsDataURL(file);
+  });
+}
+
+export async function parseDocument(
+  file: File, docType: DocType, consent: boolean,
+): Promise<DocParseResult> {
+  const content_base64 = await fileToBase64(file);
+  const res = await fetch("/api/v1/cadastral/upload-documents", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      filename: file.name, content_base64, doc_type: docType,
+      mime_type: file.type || "application/pdf", consent,
+    }),
+  });
+  return asJson<DocParseResult>(res);
+}
+
+// --- Cadastral: title cross-verification across uploaded documents -----------------------
+
+export type MatchStatus = "match" | "mismatch" | "unknown";
+
+export interface CrossCheck {
+  haveDocs: DocType[];
+  ownerMatch: { status: MatchStatus; score: number; owner?: string; buyer?: string; note: string } | null;
+  surveyParity: { status: MatchStatus; values: string[]; note: string } | null;
+  mortgages: { total: number; unreleased: number; note: string } | null;
+}
+
+const _HONORIFICS = new Set([
+  "thiru", "tmt", "selvi", "mr", "mrs", "ms", "sri", "smt", "kumari", "late",
+  "s/o", "d/o", "w/o", "son", "daughter", "wife", "of",
+]);
+
+/** Normalise an Indian name for screening comparison: lowercase, drop punctuation and common
+ *  honorifics/relations, collapse whitespace. Not transliteration-aware (Tamil phonetics are a
+ *  Phase-B refinement) — a screening signal, labelled as approximate. */
+function normalizeName(raw: string): string[] {
+  return raw.toLowerCase().replace(/[^a-z\s/]/g, " ").split(/\s+/)
+    .filter((t) => t && !_HONORIFICS.has(t));
+}
+
+/** Dice coefficient over name tokens: 0 (no overlap) to 1 (identical token sets). */
+function nameSimilarity(a: string, b: string): number {
+  const ta = new Set(normalizeName(a));
+  const tb = new Set(normalizeName(b));
+  if (ta.size === 0 || tb.size === 0) return 0;
+  let inter = 0;
+  for (const t of ta) if (tb.has(t)) inter++;
+  return (2 * inter) / (ta.size + tb.size);
+}
+
+const _MATCH = 0.5; // token-set threshold for a screening "match"
+
+function bestNameMatch(owners: string[], buyers: string[]) {
+  let best = { score: 0, owner: "", buyer: "" };
+  for (const o of owners) for (const b of buyers) {
+    const s = nameSimilarity(o, b);
+    if (s > best.score) best = { score: s, owner: o, buyer: b };
+  }
+  return best;
+}
+
+function normalizeSurvey(s: string): string {
+  return s.toLowerCase().replace(/\s+/g, "").replace(/[^0-9a-z/]/g, "");
+}
+
+/** Cross-verify the documents collected so far. A Patta/Chitta/TSLR supplies the owner; an EC
+ *  or sale deed supplies the buyer and the mortgage chain. Returns null until at least one
+ *  parsed document with fields is present. */
+export function crossVerifyDocuments(docs: Partial<Record<DocType, DocParseResult>>): CrossCheck | null {
+  const have = (Object.keys(docs) as DocType[]).filter((k) => docs[k]?.fields);
+  if (have.length === 0) return null;
+
+  const owner = docs.patta?.fields ?? docs.chitta?.fields ?? docs.tslr?.fields ?? null;
+  const buyerDoc = docs.ec?.fields ?? docs.sale_deed?.fields ?? null;
+
+  // Owner (Patta) vs buyer (EC/deed) name.
+  let ownerMatch: CrossCheck["ownerMatch"] = null;
+  if (owner?.owner_names?.length && buyerDoc?.owner_names?.length) {
+    const b = bestNameMatch(owner.owner_names, buyerDoc.owner_names);
+    const status: MatchStatus = b.score >= _MATCH ? "match" : "mismatch";
+    ownerMatch = {
+      status, score: Math.round(b.score * 100) / 100, owner: b.owner, buyer: b.buyer,
+      note: status === "match"
+        ? "Patta owner and EC/deed party appear to be the same person (approximate match)."
+        : "Patta owner and EC/deed party do not clearly match — verify the chain of title.",
+    };
+  } else if (owner || buyerDoc) {
+    ownerMatch = { status: "unknown", score: 0,
+      note: "Upload both a Patta/Chitta and an EC or sale deed to cross-check owner vs. buyer." };
+  }
+
+  // Survey-number parity across whatever documents carry one.
+  const surveys = have
+    .map((k) => docs[k]?.fields?.survey_number)
+    .filter((v): v is string => !!v);
+  let surveyParity: CrossCheck["surveyParity"] = null;
+  if (surveys.length >= 2) {
+    const norm = new Set(surveys.map(normalizeSurvey));
+    const status: MatchStatus = norm.size === 1 ? "match" : "mismatch";
+    surveyParity = { status, values: surveys,
+      note: status === "match"
+        ? "Survey numbers agree across the uploaded documents."
+        : "Survey numbers differ across documents — confirm they describe the same plot." };
+  } else if (surveys.length === 1) {
+    surveyParity = { status: "unknown", values: surveys,
+      note: "Only one document carries a survey number; upload another to cross-check parity." };
+  }
+
+  // Encumbrances from the EC/deed mortgage chain.
+  let mortgages: CrossCheck["mortgages"] = null;
+  const ms = buyerDoc?.mortgages ?? owner?.mortgages ?? [];
+  if (ms.length) {
+    const unreleased = ms.filter((m) => m?.created && !m?.released).length;
+    mortgages = { total: ms.length, unreleased,
+      note: unreleased
+        ? `${unreleased} mortgage(s) with no recorded release — a live encumbrance; confirm against CERSAI.`
+        : "All recorded mortgages show a release." };
+  }
+
+  return { haveDocs: have, ownerMatch, surveyParity, mortgages };
+}
+
 export const DEPTH_LABEL: Record<CityDepth, string> = {
   deep: "Full flood survey",
   moderate: "Partial data",

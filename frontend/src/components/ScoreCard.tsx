@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { type Fact, type RiskResult, type RiskScore } from "@/lib/api";
+import { type CrossCheck, type Fact, type RiskResult, type RiskScore } from "@/lib/api";
 import { gradeFill, gradeText, gradeTrack } from "@/lib/design";
+import EvidenceDrawer from "@/components/EvidenceDrawer";
 
 /* The card answers three questions in the order people ask them:
  *   1. Should I worry?        -> one verdict word and a 5-step meter
@@ -196,7 +197,8 @@ function Details({ result }: { result: RiskResult }) {
   );
 }
 
-export default function ScoreCard({ result }: { result: RiskResult }) {
+export default function ScoreCard({ result, crossCheck }:
+  { result: RiskResult; crossCheck?: CrossCheck | null }) {
   const admin = result.administrative;
   const adjusted = result.grade_floor_applied
     ? "Raised: one serious issue"
@@ -268,6 +270,9 @@ export default function ScoreCard({ result }: { result: RiskResult }) {
 
       {/* 3. Everything else, on request */}
       <Details result={result} />
+
+      {/* 4. Engineering, cadastral & underwriting evidence — units + sources + live scenes */}
+      <EvidenceDrawer result={result} crossCheck={crossCheck} />
     </div>
   );
 }
