@@ -136,9 +136,11 @@ export default function DocumentUploadPanel(
           <input ref={inputRef} type="file" accept=".pdf,image/*" className="hidden"
                  onChange={(e) => pick(e.target.files?.[0] ?? null)} />
           <p className="text-[14px] text-[var(--ink)]">
-            {file ? file.name : "Drop a PDF or image, or click to choose"}
+            {file ? file.name : `Tap to upload a PDF or photo (up to ${MAX_MB} MB)`}
           </p>
-          <p className="mt-0.5 text-[11.5px] text-[var(--ink-muted)]">PDF or image, up to {MAX_MB} MB</p>
+          <p className="mt-0.5 text-[11.5px] text-[var(--ink-muted)]">
+            Processed in memory to read the fields — never stored.
+          </p>
         </div>
 
         {/* Consent */}
@@ -146,8 +148,8 @@ export default function DocumentUploadPanel(
           <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)}
                  className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--ink)]" />
           <span>
-            I consent to this document being sent to the vision parser to extract its fields.
-            Without consent, only an embedded text layer (if any) is read on the server.
+            I consent to secure, in-memory AI processing to extract fields from this document
+            (never stored or shared).
           </span>
         </label>
 
