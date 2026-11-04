@@ -154,10 +154,6 @@ export default function EvidenceDrawer({ result, crossCheck }:
                     value={`~${result.crz.distance_m} m to coast`}
                     source="OSM coastline proxy — verify against CZMP" />
             )}
-            <Line label="Subsidence velocity (LOS)" value="Phase B"
-                  source="12-day NISAR/Sentinel-1 InSAR (MintPy) — orbital pipeline pending" />
-            <Line label="SAR flood recurrence Φ" value="Phase B"
-                  source="OPERA DSWx / NISAR GCOV stack — orbital pipeline pending" />
           </div>
 
           {crossCheck && <CrossVerify check={crossCheck} />}
