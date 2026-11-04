@@ -16,7 +16,7 @@ from app.core import config as cfg
 from app.core.scoring import (BASE_WEIGHTS, CONFIDENCE_ORDER, DISCLAIMER, LEVEL, VERDICT,
                               apply_severity_floor, compute_grade)
 from app.engines.common import ScoreBuilder
-from app.engines.universal import _haversine_m
+from app.engines.common import haversine_m
 
 NFHL = "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28/query"
 # EPA ECHO geographic facility search (keyless JSON). Authoritative, but a proximity screen,
@@ -121,7 +121,7 @@ def _epa_score(facilities, lat, lng):
             flat, flng = float(f.get("FacLat")), float(f.get("FacLong"))
         except (TypeError, ValueError):
             continue
-        d = _haversine_m(lat, lng, flat, flng)
+        d = haversine_m(lat, lng, flat, flng)
         count += 1
         name = f.get("FacName") or "an EPA-registered facility"
         if nearest is None or d < nearest[0]:

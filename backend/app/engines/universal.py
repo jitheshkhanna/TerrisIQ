@@ -12,7 +12,6 @@ fail-soft: if Overpass is unreachable the flood score falls back to terrain alon
 unscored rather than being filled with a reassuring zero. Thin data never reads as "safe".
 """
 import datetime
-import math
 
 import httpx
 
@@ -20,7 +19,8 @@ from app.core import config as cfg
 from app.core.elevation import elevation_profile
 from app.core.scoring import (BASE_WEIGHTS, CONFIDENCE_ORDER, DISCLAIMER, LEVEL, VERDICT,
                               apply_evidence_ceiling, apply_severity_floor, compute_grade)
-from app.engines.common import ScoreBuilder
+from app.engines import india_hazards
+from app.engines.common import ScoreBuilder, haversine_m
 
 # Public Overpass mirrors, tried in order. Each call is short-timed; the whole thing is
 # best-effort, so all three failing just means terrain-only with an honest note.
@@ -31,15 +31,6 @@ _OVERPASS_MIRRORS = [
 ]
 _HYDRO_RADIUS_M = 1500
 _COAST_RADIUS_M = 2500
-
-
-def _haversine_m(lat1, lon1, lat2, lon2):
-    r = 6371000.0
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    dp = math.radians(lat2 - lat1)
-    dl = math.radians(lon2 - lon1)
-    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-    return 2 * r * math.asin(min(1.0, math.sqrt(a)))
 
 
 def _element_point(el):
@@ -104,7 +95,7 @@ def _overpass(lat, lon, timeout=4.5):
         pt = _element_point(el)
         if pt is None:
             continue
-        d = _haversine_m(lat, lon, pt[0], pt[1])
+        d = haversine_m(lat, lon, pt[0], pt[1])
         if cat not in nearest or d < nearest[cat]["m"]:
             nearest[cat] = {"m": int(round(d)), "name": el.get("tags", {}).get("name")}
     nearest["available"] = True
@@ -187,10 +178,32 @@ def _flood(lat, lon, hydro):
     return result
 
 
-def _contamination(hydro):
-    """Contamination baseline from OSM industrial proximity only. Weak by design — there is
-    no CPCB cluster match here yet — so it stays low-confidence with an explicit data gap,
-    and never reassures. Returns None when OSM is unreachable (dimension dropped, not zeroed)."""
+def _contamination(hydro, cepi):
+    """Contamination for an uncovered point. A CPCB CEPI cluster match is the authoritative
+    MODERATE signal; absent that, OSM industrial proximity is a weak BASELINE proxy. Returns
+    None only when there is neither a cluster nor a reachable OSM map (dimension dropped and
+    labelled, never a silent zero)."""
+    if cepi is not None:
+        sb = ScoreBuilder("contamination")
+        sb.downgrade("medium")  # authoritative classification, but regional/proximity not a plume
+        base = cfg.CLUSTER_LEVEL_POINTS[cepi["level"]]
+        d, radius = cepi["distance_m"], cepi["radius_m"]
+        if d <= radius:
+            pts = base
+        else:
+            pts = base * max(0.0, 1.0 - (d - radius) / cfg.CLUSTER_DECAY_M)
+        pretty = cepi["level"].replace("_", " ")
+        sb.fact("CPCB %s cluster" % pretty, "high" if d <= radius else "medium")
+        sb.warn("%s is a CPCB CEPI %s industrial cluster; the point is %s from it. Groundwater "
+                "and soil contamination are documented here — test before relying on a borewell."
+                % (cepi["name"], pretty, _dist(d)))
+        sb.add("cepi_cluster", pts,
+               "Inside/near the %s CPCB %s cluster (%s away)" % (cepi["name"], pretty, _dist(d)),
+               cluster=cepi["name"], level=cepi["level"], distance_m=d)
+        out = sb.build()
+        out["basis"] = "cpcb_cepi"
+        return out
+
     if not hydro.get("available"):
         return None
     sb = ScoreBuilder("contamination")
@@ -222,6 +235,39 @@ def _contamination(hydro):
     return sb.build()
 
 
+_CGWB_POINTS = {"overexploited": cfg.FIRKA_POINTS["overexploited"],
+                "critical": cfg.FIRKA_POINTS["critical"],
+                "semi_critical": cfg.FIRKA_POINTS["semi_critical"],
+                "safe": cfg.FIRKA_POINTS["safe"]}
+
+
+def _scarcity(state):
+    """Water scarcity from the CGWB regional (state-level) groundwater category. A regional
+    finding, not a local block measurement, so it is low-confidence and says so. None when
+    the state is not in the index (dimension dropped, not guessed)."""
+    cls = india_hazards.cgwb_status(state)
+    if cls is None:
+        return None
+    sb = ScoreBuilder("scarcity")
+    sb.downgrade("low")
+    pretty = cls.replace("_", "-")
+    if cls in ("overexploited", "critical"):
+        sb.fact("CGWB: %s groundwater" % pretty, "medium")
+        sb.warn("CGWB classifies %s groundwater as '%s' at the regional level. Expect borewell "
+                "yields to fall in summer; confirm the local block category and a neighbour's "
+                "borewell depth before relying on a well." % (state, pretty))
+    elif cls == "semi_critical":
+        sb.fact("CGWB: semi-critical groundwater", "low")
+    else:
+        sb.fact("CGWB: safe groundwater (regional)", "good")
+    sb.add("cgwb_region", _CGWB_POINTS[cls],
+           "CGWB regional groundwater category for %s: %s" % (state, pretty),
+           classification=cls, provenance="cgwb_regional")
+    out = sb.build()
+    out["basis"] = "cgwb_regional"
+    return out
+
+
 def _decorate(block):
     if block is None:
         return None
@@ -241,9 +287,10 @@ def assess_universal(lat, lng, address, region):
     """Full /risk payload for any Indian point outside a covered city. Same shape as
     `scoring.assess`, tier BASELINE, fully fail-soft."""
     hydro = _overpass(lat, lng)
+    cepi = india_hazards.nearest_cepi(lat, lng)
     flood = _flood(lat, lng, hydro)
-    contamination = _contamination(hydro)
-    scarcity = None  # no CGWB block match yet -> dropped and labelled, never guessed
+    contamination = _contamination(hydro, cepi)
+    scarcity = _scarcity(region.get("state"))
 
     blocks = {"flood": flood, "contamination": contamination, "scarcity": scarcity}
     available = {k: v for k, v in blocks.items() if v is not None}
@@ -271,13 +318,23 @@ def assess_universal(lat, lng, address, region):
         if x and x not in parts:  # Photon often repeats the name as locality and district
             parts.append(x)
     place = ", ".join(parts) or name
+    # A match against a national dataset (CPCB CEPI / CGWB regional) lifts the point from a
+    # pure-terrain BASELINE to MODERATE; the authoritative source is named for provenance.
+    authoritative = []
+    if cepi is not None:
+        authoritative.append("CPCB CEPI (%s)" % cepi["name"])
+    if scarcity is not None:
+        authoritative.append("CGWB regional groundwater")
+    tier = "moderate" if authoritative else "baseline"
+    corporation = (" + ".join(authoritative) + " + terrain/OpenStreetMap" if authoritative
+                   else "Terrain + OpenStreetMap baseline")
     city = {
         "slug": "in-baseline", "name": name, "state": region.get("state") or "India",
-        "corporation": "Terrain + OpenStreetMap baseline",
+        "corporation": corporation,
         "centre": {"lat": lat, "lng": lng},
         "bbox": {"lat_min": lat - 0.05, "lng_min": lng - 0.05,
                  "lat_max": lat + 0.05, "lng_max": lng + 0.05},
-        "depth": "baseline", "layers": [], "scoreable_dimensions": list(available),
+        "depth": tier, "layers": [], "scoreable_dimensions": list(available),
         "ward_label": "Area", "zone_label": "District", "notes": {},
     }
     admin = {"summary": place, "inside_gcc": False, "ward_is_official": False,
@@ -296,15 +353,20 @@ def assess_universal(lat, lng, address, region):
         "evidence_ceiling_applied": ceiling_reason is not None,
         "evidence_ceiling_reason": ceiling_reason,
         "confidence": confidence,
-        "summary": ("%s (%d/100). Screening baseline for %s from terrain and OpenStreetMap — "
-                    "no municipal survey covers this area, so treat it as a first read, not a "
-                    "verdict." % (VERDICT[grade], composite, place)),
+        "summary": ("%s (%d/100). Screening read for %s from terrain, OpenStreetMap%s. No "
+                    "municipal survey covers this area, so treat it as a first read, not a "
+                    "verdict." % (VERDICT[grade], composite, place,
+                                  " and " + ", ".join(authoritative) if authoritative else "")),
         "weights": {k: round(v, 3) for k, v in weights.items()}, "base_weights": BASE_WEIGHTS,
         "unavailable_dimensions": unavailable,
         "crz": None,
-        "coverage_note": ("No municipal flood or groundwater survey is published here. The "
-                          "score comes from global terrain (SRTM) and OpenStreetMap, and is a "
-                          "screening signal rather than a survey."),
+        "coverage_note": (("No municipal survey covers this point. Flood comes from global "
+                           "terrain (SRTM) + OpenStreetMap; %s add national context. A "
+                           "screening read, not a local survey." % ", ".join(authoritative))
+                          if authoritative else
+                          ("No municipal flood or groundwater survey is published here. The "
+                           "score comes from global terrain (SRTM) and OpenStreetMap, and is a "
+                           "screening signal rather than a survey.")),
         "h3_cell": None, "cached": False,
         "generated_at": datetime.datetime.now(datetime.timezone.utc)
                                  .replace(microsecond=0).isoformat(),
@@ -314,7 +376,7 @@ def assess_universal(lat, lng, address, region):
 
 if __name__ == "__main__":
     # Offline checks on the pure logic (no network).
-    assert 425 < _haversine_m(13.0, 80.0, 13.0, 80.004) < 440, _haversine_m(13.0, 80.0, 13.0, 80.004)
+    assert 425 < haversine_m(13.0, 80.0, 13.0, 80.004) < 440, haversine_m(13.0, 80.0, 13.0, 80.004)
     assert _classify({"tags": {"natural": "coastline"}}) == "coast"
     assert _classify({"tags": {"waterway": "drain"}}) == "drain"
     assert _classify({"tags": {"natural": "water"}}) == "water"
