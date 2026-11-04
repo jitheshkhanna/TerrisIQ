@@ -2,10 +2,8 @@
 from fastapi import APIRouter
 from fastapi.responses import Response
 
-from app.api.risk import resolve_city
-from app.core.scoring import assess
+from app.api.risk import assess_point
 from app.engines.build_scope import build_scope as compute_build_scope
-from app.engines.us_flood import in_us, us_assess
 from app.models.schemas import ReportRequest, RiskRequest
 from app.pdf.generator import build_report
 
@@ -34,10 +32,7 @@ def _filename(result):
 
 
 def _assess(req):
-    if in_us(req.latitude, req.longitude):
-        return us_assess(req.latitude, req.longitude, req.address)
-    city = resolve_city(req.latitude, req.longitude, req.city)
-    return assess(city, req.latitude, req.longitude, req.address)
+    return assess_point(req.latitude, req.longitude, req.address, getattr(req, "city", None))
 
 
 @router.post("/report")
