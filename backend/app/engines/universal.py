@@ -178,6 +178,13 @@ def _flood(lat, lon, hydro):
     return result
 
 
+def flood_baseline(lat, lng):
+    """Public terrain+OSM flood baseline for a single point (fetches its own hydrology).
+    Used as the honest fallback when a surveyed source is unreachable — e.g. the US engine
+    when FEMA NFHL returns nothing, so the point is scored on terrain, never on a fake zero."""
+    return _flood(lat, lng, _overpass(lat, lng))
+
+
 def _contamination(hydro, cepi):
     """Contamination for an uncovered point. A CPCB CEPI cluster match is the authoritative
     MODERATE signal; absent that, OSM industrial proximity is a weak BASELINE proxy. Returns

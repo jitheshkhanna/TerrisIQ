@@ -15,6 +15,7 @@ import httpx
 from app.core import config as cfg
 from app.core.scoring import (BASE_WEIGHTS, CONFIDENCE_ORDER, DISCLAIMER, LEVEL, VERDICT,
                               apply_severity_floor, compute_grade)
+from app.engines import universal
 from app.engines.common import ScoreBuilder
 from app.engines.common import haversine_m
 
@@ -66,9 +67,9 @@ def _score_from_attrs(attrs):
 
 
 def _unmapped(note):
-    # shortcut: 'unknown' is scored low with low confidence; a proper evidence-ceiling (like
-    # the India engine's) should cap any composite when FEMA has no coverage. Add when US
-    # gets more than one peril.
+    # A placeholder flood block carrying only the reason FEMA gave nothing. us_assess detects
+    # this basis ("fema_unmapped") and replaces it with the terrain baseline, so this low
+    # score is never what the user actually sees — it just flags "no FEMA mapping here".
     grade, band = compute_grade(_LEVEL_SCORE[1])
     return {
         "score": _LEVEL_SCORE[1], "grade": grade, "band": band, "verdict": VERDICT[grade],
@@ -190,6 +191,15 @@ def us_assess(lat, lng, address=None):
     contamination, composited and renormalised. Water scarcity is not yet scored for the US
     and is dropped-and-labelled, not zeroed. Same shape the India engines produce."""
     flood = fema_flood(lat, lng)
+    if flood.get("basis") == "fema_unmapped":
+        # FEMA has no usable mapping here (unmapped county, or the service is down). Do NOT
+        # let that read as grade A "very low risk" — score the point on the terrain baseline
+        # instead, and keep the FEMA note so the gap is explicit. (Guardrail: thin data is
+        # never silently "safe"; a dropped source falls back to terrain, not to zero hazard.)
+        fema_note = flood["warnings"][0] if flood.get("warnings") else "FEMA mapping unavailable here"
+        flood = universal.flood_baseline(lat, lng)
+        flood.setdefault("warnings", []).insert(0, fema_note)
+        flood["details"]["fema"] = fema_note
     contamination = epa_contamination(lat, lng)
     blocks = {"flood": flood, "contamination": contamination, "scarcity": None}
     available = {k: v for k, v in blocks.items() if v is not None}
@@ -236,9 +246,12 @@ def us_assess(lat, lng, address=None):
         "severity_note": floor_reason,
         "evidence_ceiling_applied": ceiling_reason is not None,
         "evidence_ceiling_reason": ceiling_reason, "confidence": confidence,
-        "summary": ("%s (%d/100). Flood from FEMA's National Flood Hazard Layer; contamination "
-                    "from EPA's ECHO facility database. Water scarcity is not yet scored for "
-                    "US locations." % (VERDICT[grade], composite)),
+        "summary": ("%s (%d/100). Flood from %s; contamination from EPA's ECHO facility "
+                    "database. Water scarcity is not yet scored for US locations."
+                    % (VERDICT[grade], composite,
+                       "a terrain baseline (FEMA mapping was unavailable here)"
+                       if flood.get("basis") == "terrain_and_proxies"
+                       else "FEMA's National Flood Hazard Layer")),
         "weights": {k: round(v, 3) for k, v in weights.items()}, "base_weights": BASE_WEIGHTS,
         "unavailable_dimensions": unavailable,
         "crz": None,
