@@ -125,6 +125,14 @@ class BuildScopeRequest(BaseModel):
                      description="residential | commercial | mixed | industrial | "
                                  "institutional | plotted_layout")
     proposed_height_m: Optional[float] = Field(None, ge=0, le=1000)
+    latitude: Optional[float] = Field(None, ge=-90, le=90,
+                                      description="Plot point; derives jurisdiction + airport NOC")
+    longitude: Optional[float] = Field(None, ge=-180, le=180)
+    jurisdiction: Optional[str] = Field(
+        None, description="tamil_nadu | india | us. Derived from the point when omitted.")
+    fsi_override: Optional[float] = Field(
+        None, gt=0, le=20, description="Local FSI/FAR from the plot's DCR/zoning; required to "
+                                       "size floor area outside Tamil Nadu")
     plot_width_m: Optional[float] = Field(None, gt=0, le=10000,
                                           description="Frontage, for the layout export")
     plot_depth_m: Optional[float] = Field(None, gt=0, le=10000,
