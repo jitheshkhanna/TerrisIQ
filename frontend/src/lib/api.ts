@@ -306,16 +306,36 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string |
   }
 }
 
-export function reportUrl(
-  lat: number,
-  lng: number,
-  address?: string | null,
-  city?: string | null,
-): string {
-  const params = new URLSearchParams({ latitude: String(lat), longitude: String(lng) });
-  if (address) params.set("address", address);
-  if (city) params.set("city", city);
-  return `/api/v1/report?${params.toString()}`;
+/** Download the PDF report. POSTs so it can carry the whole workspace — the Build Scope the
+ *  user set and the title cross-check from their uploads — which a GET link can't (and which,
+ *  being personal, must not sit in a URL). Both extras are optional; the location report
+ *  renders without them. */
+export async function downloadReport(
+  result: RiskResult,
+  buildScope?: BuildScopeInput | null,
+  titleCheck?: CrossCheck | null,
+): Promise<void> {
+  const res = await fetch("/api/v1/report", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      latitude: result.latitude, longitude: result.longitude,
+      city: result.city?.slug ?? null, address: result.address ?? null,
+      build_scope: buildScope ?? null, title_check: titleCheck ?? null,
+    }),
+  });
+  if (!res.ok) throw new Error("Could not generate the report.");
+  const blob = await res.blob();
+  const name = (result.address || "parcel").split(",")[0]
+    .replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 40) || "parcel";
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `terrisiq-report-${name}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // --- Cadastral: Build Scope (TNCDBR) calculator -------------------------------------------

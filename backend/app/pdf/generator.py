@@ -359,14 +359,165 @@ def _key_findings(result, limit=6):
     return out[:limit]
 
 
+_PLAIN_VERDICT = {
+    1: "On the hazards we can measure, this plot looks low-risk.",
+    2: "This plot looks mostly low-risk, with a few things worth checking.",
+    3: "This plot carries moderate risk — read the checklist below before you commit.",
+    4: "This plot has serious risk flags. Get them checked before you pay any money.",
+    5: "This plot has major risk flags. Treat it as high-risk until an expert clears it.",
+}
+
+
+def _plain_summary(story, st, result, build_scope, title_check, width):
+    """A plain-language box anyone can act on — written for a first-time buyer, not an
+    engineer. Enterprises still get the cited breakdown on the later pages; this is the
+    one-glance 'what it means and what to check' that the whole report hangs off."""
+    level = result.get("level") or 1
+    story.append(Paragraph("In plain words", st["h2"]))
+    story.append(Paragraph(_PLAIN_VERDICT.get(level, _PLAIN_VERDICT[3]), st["body"]))
+
+    checks = []
+    # Title — tailored to the uploaded documents when we have them.
+    owner = (title_check or {}).get("ownerMatch")
+    if owner and owner.get("status") == "mismatch":
+        checks.append("The name on the Patta does not clearly match the sale/EC party — "
+                      "confirm who actually owns this land before paying.")
+    elif owner and owner.get("status") == "match":
+        checks.append("Patta owner and the sale/EC party look consistent — still verify the "
+                      "original documents at the sub-registrar.")
+    else:
+        checks.append("Confirm the seller's name on the Patta matches the EC and the sale deed.")
+    mort = (title_check or {}).get("mortgages")
+    if mort and mort.get("unreleased"):
+        checks.append("At least one loan on this land has no release on record — get it "
+                      "cleared (CERSAI/EC) before you buy.")
+    checks.append("Check the survey number is the same on every document and on the ground.")
+    crz = result.get("crz")
+    if crz:
+        checks.append("This plot is near the coast (CRZ ~%s m) — confirm what you may build "
+                      "under the CZMP." % crz.get("distance_m", "?"))
+    flood = result.get("flood") or {}
+    if (flood.get("level") or 0) >= 3:
+        checks.append("This street can flood in the monsoon — ask neighbours how high the "
+                      "water came last time, and whether the storm drain works.")
+    if build_scope:
+        fsi = build_scope["fsi"]["max_with_premium"]
+        units = build_scope["yield"].get("approx_dwelling_units")
+        tail = " (roughly %d homes-worth of floor area)" % units if units else ""
+        checks.append("You can build to about FSI %s here%s — confirm the exact limit with "
+                      "CMDA/DTCP before you plan." % (fsi, tail))
+
+    story.append(Spacer(1, 3))
+    story.append(Paragraph("<b>Before you pay, check:</b>", st["body"]))
+    for item in checks[:6]:
+        story.append(Paragraph("&bull;&nbsp; %s" % item, st["body"]))
+    story.append(Spacer(1, 6))
+
+
+_NOC_NONE = "No statutory clearances are triggered by these inputs."
+
+
+def _build_scope_section(story, st, bs, width):
+    """'What you can build here' — the TNCDBR development envelope, for the buyer deciding
+    whether the plot fits their plan and for a lender sizing the asset."""
+    story.append(PageBreak())
+    story.append(Paragraph("What you can build here", st["h2"]))
+    story.append(Paragraph(
+        "Indicative development potential under TNCDBR-2019-style rules for a "
+        "<b>%s m&#178;</b> plot on a <b>%s m</b> road, %s use."
+        % (int(bs["inputs"]["plot_area_sqm"]), bs["inputs"]["road_width_m"],
+           bs["inputs"]["use"]), st["small"]))
+    story.append(Spacer(1, 4))
+
+    h = bs["height"]
+    height_val = ("%s m (capped by %s)" % (h["net_permissible_m"], h["constrained_by"])
+                  if h.get("net_permissible_m") is not None
+                  else "provide AAI PTE + ground elevation for the airport cap")
+    rows = [
+        ("Max FSI (with premium)", "%s  (normal %s + premium %s)"
+         % (bs["fsi"]["max_with_premium"], bs["fsi"]["normal"], bs["fsi"]["premium_added"])),
+        ("Max built-up area", "%s m²  (%s m² at normal FSI)"
+         % (int(bs["built_up_area_sqm"]["at_premium_fsi"]),
+            int(bs["built_up_area_sqm"]["at_normal_fsi"]))),
+        ("Ground coverage", "%d%%  (%s m² footprint)"
+         % (round(bs["ground_coverage"]["fraction"] * 100),
+            int(bs["ground_coverage"]["max_footprint_sqm"]))),
+        ("Setbacks (front / side / rear)", "%s / %s / %s m"
+         % (bs["setbacks"]["front_m"], bs["setbacks"]["side1_m"], bs["setbacks"]["rear_m"])),
+        ("Net permissible height", height_val),
+        ("Parking", "%d car-equivalent spaces" % bs["parking"]["car_equivalent_spaces"]),
+    ]
+    if bs["yield"].get("approx_dwelling_units") is not None:
+        rows.append(("Approx. dwelling units", "~%d" % bs["yield"]["approx_dwelling_units"]))
+    if bs["osr"].get("required"):
+        rows.append(("Reserved open space (OSR)", "%s m²" % bs["osr"]["area_sqm"]))
+    story.append(_metric_table(rows, width))
+
+    story.append(Paragraph("Clearances to obtain", st["h3"]))
+    active = [n for n in bs["noc_checklist"] if n.get("required")]
+    if not active:
+        story.append(Paragraph(_NOC_NONE, st["body"]))
+    else:
+        for n in active:
+            story.append(Paragraph("&#9888;&nbsp; <b>%s</b> — %s"
+                                   % (n["authority"], n["reason"]), st["warn"]))
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(bs["disclaimer"], st["small"]))
+
+
+_TITLE_STATUS = {
+    "match": ("Consistent", "#15803d"),
+    "mismatch": ("Does not match", "#dc2626"),
+    "unknown": ("Need more documents", "#6b7280"),
+}
+
+
+def _title_row(story, st, label, status, detail):
+    word, hexc = _TITLE_STATUS.get(status, _TITLE_STATUS["unknown"])
+    story.append(Paragraph('<b>%s</b> &mdash; <font color="%s">%s</font>'
+                           % (label, hexc, word), st["body"]))
+    if detail:
+        story.append(Paragraph(detail, st["small"]))
+    story.append(Spacer(1, 3))
+
+
+def _title_section(story, st, title_check, width):
+    """Title cross-verification from the user's own uploaded documents — the due-diligence
+    section an underwriter and a buyer both want. Screening signals, not legal advice."""
+    story.append(PageBreak())
+    story.append(Paragraph("Title &amp; document verification", st["h2"]))
+    have = ", ".join(title_check.get("haveDocs") or []) or "your uploaded documents"
+    story.append(Paragraph(
+        "Screening checks across %s. These are automated comparisons — verify the originals "
+        "against the sub-registrar's records and CERSAI before relying on them." % have,
+        st["small"]))
+    story.append(Spacer(1, 5))
+
+    owner = title_check.get("ownerMatch")
+    if owner:
+        detail = owner.get("note") or ""
+        if owner.get("owner") and owner.get("buyer"):
+            detail = "%s ↔ %s. %s" % (owner["owner"], owner["buyer"], detail)
+        _title_row(story, st, "Patta owner vs. sale/EC party", owner.get("status"), detail)
+    survey = title_check.get("surveyParity")
+    if survey:
+        vals = " vs ".join(survey.get("values") or [])
+        _title_row(story, st, "Survey-number parity", survey.get("status"),
+                   "%s. %s" % (vals, survey.get("note") or ""))
+    mort = title_check.get("mortgages")
+    if mort:
+        status = "mismatch" if mort.get("unreleased") else "match"
+        _title_row(story, st, "Encumbrance (mortgage) chain", status, mort.get("note") or "")
+
+
 def _header_footer(canvas, doc):
     canvas.saveState()
     canvas.setFont("Helvetica-Bold", 8)
     canvas.setFillColor(MUTED)
-    canvas.drawString(MARGIN, PAGE_H - 12 * mm, "Property Risk Analyser")
+    canvas.drawString(MARGIN, PAGE_H - 12 * mm, "TerrisIQ")
     canvas.setFont("Helvetica", 8)
     canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - 12 * mm,
-                           "Environmental due diligence screening")
+                           "Property risk & buildability — due-diligence screening")
     canvas.setStrokeColor(RULE)
     canvas.setLineWidth(0.5)
     canvas.line(MARGIN, PAGE_H - 14 * mm, PAGE_W - MARGIN, PAGE_H - 14 * mm)
@@ -377,7 +528,7 @@ def _header_footer(canvas, doc):
     canvas.restoreState()
 
 
-def build_report(result):
+def build_report(result, build_scope=None, title_check=None):
     city_info = result.get("city") or {}
     city = city_registry.get(city_info.get("slug"))
     # A US (or any out-of-India) result has no local layer store; skip the locality map
@@ -390,14 +541,14 @@ def build_report(result):
     doc = BaseDocTemplate(buf, pagesize=A4,
                           leftMargin=MARGIN, rightMargin=MARGIN,
                           topMargin=MARGIN + 4 * mm, bottomMargin=MARGIN,
-                          title="Property Risk Analyser report",
-                          author="Property Risk Analyser")
+                          title="TerrisIQ property risk report",
+                          author="TerrisIQ")
     frame = Frame(MARGIN, MARGIN, width, PAGE_H - 2 * MARGIN - 4 * mm, id="body")
     doc.addPageTemplates([PageTemplate(id="main", frames=[frame], onPage=_header_footer)])
 
     story = []
     address = result.get("address") or "Unnamed parcel"
-    story.append(Paragraph("Environmental Risk Report", st["title"]))
+    story.append(Paragraph("TerrisIQ Property Risk Report", st["title"]))
     story.append(Paragraph(address, st["body"]))
     if result.get("coverage_note"):
         story.append(Paragraph("<b>%s</b> &middot; %s" % (city_name, result["coverage_note"]),
@@ -422,6 +573,9 @@ def build_report(result):
                                st["small"]))
     story.append(Spacer(1, 4))
 
+    # Plain-language "what it means / what to check" — the part a first-time buyer reads.
+    _plain_summary(story, st, result, build_scope, title_check, width)
+
     findings = _key_findings(result)
     if findings:
         story.append(Paragraph("Key findings", st["h2"]))
@@ -434,6 +588,13 @@ def build_report(result):
         story.append(LocalityMap(city, result["latitude"], result["longitude"], width))
         story.append(Spacer(1, 2))
         story.append(Legend(width))
+
+    # Buildability and title — the two things the location score alone can't tell a buyer.
+    # Each renders on its own page and is skipped when the app didn't supply the data.
+    if build_scope:
+        _build_scope_section(story, st, build_scope, width)
+    if title_check:
+        _title_section(story, st, title_check, width)
 
     story.append(PageBreak())
     story.append(Paragraph("Risk breakdown", st["h2"]))

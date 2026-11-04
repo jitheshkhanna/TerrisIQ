@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ScoreCard from "@/components/ScoreCard";
 import BuildScopePanel, { type BuildScopePrefill } from "@/components/BuildScopePanel";
 import DocumentUploadPanel from "@/components/DocumentUploadPanel";
+import { CrossVerify } from "@/components/EvidenceDrawer";
 import LiveNowcast from "@/components/LiveNowcast";
 import SearchBar from "@/components/SearchBar";
 import ViewSwitcher from "@/components/ViewSwitcher";
@@ -12,10 +13,11 @@ import ChatPanel from "@/components/ChatPanel";
 import {
   assessRisk,
   crossVerifyDocuments,
+  downloadReport,
   fullLabel,
   listCities,
-  reportUrl,
   reverseGeocode,
+  type BuildScopeInput,
   type City,
   type DocParseResult,
   type DocType,
@@ -87,6 +89,9 @@ export default function Home() {
   const [locating, setLocating] = useState(false);
   // Parsed cadastral documents, keyed by type, so a Patta + an EC accumulate and cross-check.
   const [docResults, setDocResults] = useState<Partial<Record<DocType, DocParseResult>>>({});
+  // The Build Scope inputs currently shown, lifted from the panel so the PDF report matches it.
+  const [buildScopeInput, setBuildScopeInput] = useState<BuildScopeInput | null>(null);
+  const [reportBusy, setReportBusy] = useState(false);
   // Which panel of the result sheet is showing. Keeps the mobile sheet compact. `tabKey`
   // tracks the location a tab choice belongs to, so a new point resets to Risk (see below).
   const [tab, setTab] = useState<"risk" | "build" | "docs">("risk");
@@ -136,6 +141,7 @@ export default function Home() {
   if (buildPrefill?.key !== tabKey) {
     setTabKey(buildPrefill?.key);
     setTab("risk");
+    setBuildScopeInput(null);  // last point's build inputs don't belong to the new one
   }
 
   useEffect(() => {
@@ -366,7 +372,7 @@ export default function Home() {
           {tab === "risk" && (
             <>
               <div className="card mt-3 p-5">
-                <ScoreCard result={result} section="detail" crossCheck={crossCheck} />
+                <ScoreCard result={result} section="detail" />
               </div>
               <ChatPanel
                 result={result}
@@ -380,15 +386,21 @@ export default function Home() {
 
           {tab === "build" && (
             <div className="mt-3">
-              <BuildScopePanel key={buildPrefill?.key} prefill={buildPrefill} surveyBadge={surveyBadge} />
+              <BuildScopePanel key={buildPrefill?.key} prefill={buildPrefill}
+                               surveyBadge={surveyBadge} onInput={setBuildScopeInput} />
             </div>
           )}
 
           {tab === "docs" && (
-            <div className="mt-3">
+            <div className="mt-3 space-y-3">
               <DocumentUploadPanel
                 onParsed={(docType, parsed) => setDocResults((prev) => ({ ...prev, [docType]: parsed }))}
               />
+              {crossCheck && (
+                <section className="rounded-2xl border border-[var(--hairline)] bg-[var(--surface)] p-4 sm:p-5">
+                  <CrossVerify check={crossCheck} />
+                </section>
+              )}
             </div>
           )}
         </>
@@ -420,18 +432,30 @@ export default function Home() {
 
   // Pinned report button — rendered OUTSIDE the scroll area so the panel content scrolls
   // above it only, never under it. Orange (the 10% accent), dark ink on top.
+  const getReport = async () => {
+    if (!result || reportBusy) return;
+    setReportBusy(true);
+    setError(null);
+    try {
+      await downloadReport(result, buildScopeInput, crossCheck);
+    } catch {
+      setError("Couldn't generate the report. Try again in a moment.");
+    } finally {
+      setReportBusy(false);
+    }
+  };
+
   const actionBar = !loading && result ? (
-    <a
-      href={reportUrl(result.latitude, result.longitude, result.address, result.city.slug)}
-      target="_blank"
-      rel="noreferrer"
+    <button
+      onClick={getReport}
+      disabled={reportBusy}
       className="flex min-h-[52px] w-full items-center justify-center rounded-xl
                  bg-[var(--accent)] px-4 text-[16px] font-semibold text-[var(--accent-ink)]
                  shadow-[0_12px_30px_-10px_rgba(245,124,0,0.5)]
-                 transition hover:bg-[var(--accent-strong)] active:scale-[0.99]"
+                 transition hover:bg-[var(--accent-strong)] active:scale-[0.99] disabled:opacity-60"
     >
-      Download report
-    </a>
+      {reportBusy ? "Preparing report…" : "Download report"}
+    </button>
   ) : null;
 
   // A soft fade at the bottom of the scroll area cues that there is more below (Law of

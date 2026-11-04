@@ -141,6 +141,16 @@ class BuildScopeRequest(BaseModel):
                           "near_metro_or_rail")
 
 
+class ReportRequest(RiskRequest):
+    """A risk request that may also carry what the user built in the app — the Build Scope
+    inputs and the title cross-check from their uploaded documents — so the PDF reflects the
+    whole workspace, not just the location score. Both are optional; the location report
+    renders without them."""
+    build_scope: Optional[BuildScopeRequest] = None
+    title_check: Optional[Dict[str, Any]] = Field(
+        None, description="Title cross-verification summary derived from the user's uploads")
+
+
 class GeocodeResult(BaseModel):
     label: str = Field(..., description="What the user searched for, e.g. '100 Feet Road'")
     context: str = Field("", description="Where it is, e.g. 'Velachery, Chennai 600042'")

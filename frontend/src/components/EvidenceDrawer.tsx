@@ -83,7 +83,7 @@ function CheckRow({ label, status, detail }: { label: string; status: MatchStatu
   );
 }
 
-function CrossVerify({ check }: { check: CrossCheck }) {
+export function CrossVerify({ check }: { check: CrossCheck }) {
   return (
     <div>
       <p className="text-[13px] font-semibold text-[var(--ink)]">Title cross-verification</p>
