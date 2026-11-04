@@ -60,7 +60,11 @@ Preserve what already works: the frictionless point-of-decision UX, fast onboard
 - **Local box:** Python 3.9 only, no Docker/brew/GDAL. Treat anything needing those as Phase B.
 - **Shipped risk engines:** flood, contamination, scarcity, composite; `crz.py` (CRZ screening from the
   open OSM coastline — a proxy, labelled "verify against the CZMP"); `nowcast.py` (live rain × flood +
-  official NDMA/IMD alerts); `us_flood.py` (FEMA NFHL). Coverage: 8 Indian metros (Chennai validated) + US.
+  official NDMA/IMD alerts); `us_flood.py` (FEMA NFHL flood + EPA ECHO contamination); `universal.py`
+  (terrain+OSM BASELINE so any India point is scoreable); `india_hazards.py` (bundled CPCB CEPI / CGWB /
+  AAI national index → MODERATE). **Coverage is nationwide** — all of India and all 50 US states — via
+  one resolver (`assess_point`); every point returns a cited read at a DEEP / MODERATE / BASELINE
+  confidence tier (see `COVERAGE.md`). Chennai is the only validated flood survey.
 
 ---
 

@@ -2,8 +2,10 @@
 from fastapi import APIRouter, HTTPException
 
 from app.core import cities as city_registry
+from app.core.resolver import in_india, resolve_region
 from app.core.scoring import assess
 from app.engines.nowcast import waterlogging_now
+from app.engines.universal import assess_universal
 from app.engines.us_flood import in_us, us_assess
 from app.models.schemas import RiskRequest, RiskResponse
 
@@ -54,6 +56,28 @@ def resolve_city(latitude, longitude, slug=None):
                "Covered: %s." % (nearest.name, ", ".join(c.name for c in city_registry.CITIES.values())))
 
 
+def assess_point(latitude, longitude, address=None, slug=None):
+    """Score any point: a surveyed city where one covers it, FEMA for the US, and the
+    universal terrain+OSM baseline anywhere else in India. Only points outside both India
+    and the US are refused. Used by the /risk endpoints and the PDF report alike."""
+    if in_us(latitude, longitude):
+        return us_assess(latitude, longitude, address)
+    covered = city_registry.find_by_point(latitude, longitude)
+    if slug:
+        named = city_registry.get(slug)
+        if named is not None and named.contains(latitude, longitude):
+            covered = named
+    if covered is not None:
+        return assess(covered, latitude, longitude, address)
+    if in_india(latitude, longitude):
+        return assess_universal(latitude, longitude, address, resolve_region(latitude, longitude))
+    nearest, _ = city_registry.nearest(latitude, longitude)
+    raise HTTPException(
+        status_code=422,
+        detail="That point is outside our India and US coverage. Nearest covered city is %s."
+               % nearest.name)
+
+
 @router.get("/cities")
 async def list_cities():
     """Every covered city and, honestly, how much is known about each."""
@@ -70,17 +94,10 @@ async def list_cities():
 
 @router.post("/risk", response_model=RiskResponse)
 async def assess_risk(req: RiskRequest):
-    if in_us(req.latitude, req.longitude):
-        return us_assess(req.latitude, req.longitude, req.address)
-    city = resolve_city(req.latitude, req.longitude, req.city)
-    return assess(city, req.latitude, req.longitude, req.address)
+    return assess_point(req.latitude, req.longitude, req.address, req.city)
 
 
 @router.get("/risk", response_model=RiskResponse)
 async def assess_risk_get(latitude: float, longitude: float,
                           address: str = None, city: str = None):
-    req = RiskRequest(latitude=latitude, longitude=longitude, address=address, city=city)
-    if in_us(req.latitude, req.longitude):
-        return us_assess(req.latitude, req.longitude, req.address)
-    resolved = resolve_city(req.latitude, req.longitude, req.city)
-    return assess(resolved, req.latitude, req.longitude, req.address)
+    return assess_point(latitude, longitude, address, city)

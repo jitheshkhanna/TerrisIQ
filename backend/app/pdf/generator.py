@@ -402,10 +402,16 @@ def _plain_summary(story, st, result, build_scope, title_check, width):
                       "water came last time, and whether the storm drain works.")
     if build_scope:
         fsi = build_scope["fsi"]["max_with_premium"]
-        units = build_scope["yield"].get("approx_dwelling_units")
-        tail = " (roughly %d homes-worth of floor area)" % units if units else ""
-        checks.append("You can build to about FSI %s here%s — confirm the exact limit with "
-                      "CMDA/DTCP before you plan." % (fsi, tail))
+        term = build_scope["fsi"].get("term", "FSI")
+        auth = build_scope["jurisdiction"]["authority"]
+        if fsi is None:
+            checks.append("How much floor space (%s) you may build here is set by %s — get "
+                          "your plot's %s before you plan." % (term, auth, term))
+        else:
+            units = build_scope["yield"].get("approx_dwelling_units")
+            tail = " (roughly %d homes-worth of floor area)" % units if units else ""
+            checks.append("You can build to about %s %s here%s — confirm the exact limit with "
+                          "%s before you plan." % (term, fsi, tail, auth))
 
     story.append(Spacer(1, 3))
     story.append(Paragraph("<b>Before you pay, check:</b>", st["body"]))
@@ -418,34 +424,46 @@ _NOC_NONE = "No statutory clearances are triggered by these inputs."
 
 
 def _build_scope_section(story, st, bs, width):
-    """'What you can build here' — the TNCDBR development envelope, for the buyer deciding
-    whether the plot fits their plan and for a lender sizing the asset."""
+    """'What you can build here' — the region-adaptive development envelope, for the buyer
+    deciding whether the plot fits their plan and for a lender sizing the asset."""
     story.append(PageBreak())
     story.append(Paragraph("What you can build here", st["h2"]))
+    jur = bs["jurisdiction"]
+    au = bs["area_in_units"]
     story.append(Paragraph(
-        "Indicative development potential under TNCDBR-2019-style rules for a "
-        "<b>%s m&#178;</b> plot on a <b>%s m</b> road, %s use."
-        % (int(bs["inputs"]["plot_area_sqm"]), bs["inputs"]["road_width_m"],
-           bs["inputs"]["use"]), st["small"]))
+        "Indicative development potential under <b>%s</b> rules for a <b>%s m&#178;</b> "
+        "(%s cents / %s grounds / %s acres) plot on a <b>%s m</b> road, %s use."
+        % (jur["label"], int(bs["inputs"]["plot_area_sqm"]), au["cents"], au["grounds"],
+           au["acres"], bs["inputs"]["road_width_m"], bs["inputs"]["use"]), st["small"]))
     story.append(Spacer(1, 4))
 
     h = bs["height"]
     height_val = ("%s m (capped by %s)" % (h["net_permissible_m"], h["constrained_by"])
                   if h.get("net_permissible_m") is not None
-                  else "provide AAI PTE + ground elevation for the airport cap")
+                  else "provide %s PTE + ground elevation for the airport cap" % h["authority"])
+    term = bs["fsi"].get("term", "FSI")
+    fsi = bs["fsi"]
+    if fsi["max_with_premium"] is None:
+        fsi_val = "set by %s — enter your plot's %s" % (jur["authority"], term)
+        bu = "enter the local %s to size the floor area" % term
+    else:
+        fsi_val = ("%s  (normal %s + premium %s)"
+                   % (fsi["max_with_premium"], fsi["normal"], fsi["premium_added"]))
+        bu = ("%s m²  (%s m² at normal %s)"
+              % (int(bs["built_up_area_sqm"]["at_premium_fsi"]),
+                 int(bs["built_up_area_sqm"]["at_normal_fsi"]), term))
     rows = [
-        ("Max FSI (with premium)", "%s  (normal %s + premium %s)"
-         % (bs["fsi"]["max_with_premium"], bs["fsi"]["normal"], bs["fsi"]["premium_added"])),
-        ("Max built-up area", "%s m²  (%s m² at normal FSI)"
-         % (int(bs["built_up_area_sqm"]["at_premium_fsi"]),
-            int(bs["built_up_area_sqm"]["at_normal_fsi"]))),
+        ("Max %s (with premium)" % term, fsi_val),
+        ("Max built-up area", bu),
         ("Ground coverage", "%d%%  (%s m² footprint)"
          % (round(bs["ground_coverage"]["fraction"] * 100),
             int(bs["ground_coverage"]["max_footprint_sqm"]))),
         ("Setbacks (front / side / rear)", "%s / %s / %s m"
          % (bs["setbacks"]["front_m"], bs["setbacks"]["side1_m"], bs["setbacks"]["rear_m"])),
         ("Net permissible height", height_val),
-        ("Parking", "%d car-equivalent spaces" % bs["parking"]["car_equivalent_spaces"]),
+        ("Parking", ("%d car-equivalent spaces" % bs["parking"]["car_equivalent_spaces"]
+                     if bs["parking"]["car_equivalent_spaces"] is not None
+                     else "sized once the %s is set" % term)),
     ]
     if bs["yield"].get("approx_dwelling_units") is not None:
         rows.append(("Approx. dwelling units", "~%d" % bs["yield"]["approx_dwelling_units"]))

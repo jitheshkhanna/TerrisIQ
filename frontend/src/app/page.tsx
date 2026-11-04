@@ -16,6 +16,7 @@ import {
   downloadReport,
   fullLabel,
   listCities,
+  regionOf,
   reverseGeocode,
   type BuildScopeInput,
   type City,
@@ -130,6 +131,7 @@ export default function Home() {
     if (typeof drain === "number" && drain <= 50) { flags.near_storm_drain = true; triggers.push(`Storm drain ${drain} m`); }
     return {
       key: `${result.latitude.toFixed(5)},${result.longitude.toFixed(5)}`,
+      lat: result.latitude, lng: result.longitude,
       groundElevM: typeof elev === "number" ? elev : null,
       cityName: result.city?.name ?? null,
       flags, triggers,
@@ -144,39 +146,10 @@ export default function Home() {
     setBuildScopeInput(null);  // last point's build inputs don't belong to the new one
   }
 
-  useEffect(() => {
-    listCities()
-      .then((list) => {
-        setCities(list);
-
-        // Deep link: /?lat=&lng=&city= — how the Terris browser extension hands a place
-        // over to the full web app. Accept latitude/longitude as aliases too.
-        const params = new URLSearchParams(window.location.search);
-        const lat = parseFloat(params.get("lat") ?? params.get("latitude") ?? "");
-        const lng = parseFloat(params.get("lng") ?? params.get("longitude") ?? "");
-        const slug = params.get("city");
-        const hasPoint = Number.isFinite(lat) && Number.isFinite(lng);
-        const inBbox = (c: City) =>
-          lat >= c.bbox.lat_min && lat <= c.bbox.lat_max &&
-          lng >= c.bbox.lng_min && lng <= c.bbox.lng_max;
-        const linked =
-          (slug ? list.find((c) => c.slug === slug) : undefined) ??
-          (hasPoint ? list.find(inBbox) : undefined) ??
-          null;
-
-        setCity((current) => current ?? linked ?? list[0] ?? null);
-
-        if (!deepLinkRef.current && hasPoint) {
-          deepLinkRef.current = true;
-          setFlyTo({ lat, lng, zoom: 15 });
-          score(lat, lng, null, slug ?? linked?.slug ?? null);
-        }
-      })
-      .catch(() => setError("Could not load the list of cities."));
-    // Run once on mount; `score` is stable for this one-shot deep-link hand-off.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+  // `score` and `locateMe` are declared before the effects that call them, so neither effect
+  // reads a callback before it exists. `locateMe` is a plain memoised handler (NOT a hook), so
+  // it is deliberately not prefixed `use*` — that prefix would make the linter police it as a
+  // hook and forbid calling it from the effect and the search bar below.
   const score = useCallback(async (lat: number, lng: number, label?: string | null,
                                    slug?: string | null) => {
     setMarker({ lat, lng });
@@ -207,7 +180,7 @@ export default function Home() {
     }
   }, [city]);
 
-  const useMyLocation = useCallback((silent = false) => {
+  const locateMe = useCallback((silent = false) => {
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
       if (!silent) setError("Location isn't available on this device. Search an address instead.");
       return;
@@ -242,8 +215,42 @@ export default function Home() {
     );
   }, [cities, city, score]);
 
+  useEffect(() => {
+    listCities()
+      .then((list) => {
+        setCities(list);
+
+        // Deep link: /?lat=&lng=&city= — how the Terris browser extension hands a place
+        // over to the full web app. Accept latitude/longitude as aliases too.
+        const params = new URLSearchParams(window.location.search);
+        const lat = parseFloat(params.get("lat") ?? params.get("latitude") ?? "");
+        const lng = parseFloat(params.get("lng") ?? params.get("longitude") ?? "");
+        const slug = params.get("city");
+        const hasPoint = Number.isFinite(lat) && Number.isFinite(lng);
+        const inBbox = (c: City) =>
+          lat >= c.bbox.lat_min && lat <= c.bbox.lat_max &&
+          lng >= c.bbox.lng_min && lng <= c.bbox.lng_max;
+        const linked =
+          (slug ? list.find((c) => c.slug === slug) : undefined) ??
+          (hasPoint ? list.find(inBbox) : undefined) ??
+          null;
+
+        setCity((current) => current ?? linked ?? list[0] ?? null);
+
+        if (!deepLinkRef.current && hasPoint) {
+          deepLinkRef.current = true;
+          setFlyTo({ lat, lng, zoom: 15 });
+          score(lat, lng, null, slug ?? linked?.slug ?? null);
+        }
+      })
+      .catch(() => setError("Could not load the list of cities."));
+    // Run once on mount; `score` is stable for this one-shot deep-link hand-off.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Land -> jump to the visitor's own location, like a maps app. Skipped when a ?lat&lng
   // deep link already picked the place. US points now score too (FEMA), India via the city.
+  // Deferred to a microtask so it doesn't set state synchronously inside the effect.
   const autoLocatedRef = useRef(false);
   useEffect(() => {
     if (autoLocatedRef.current || cities.length === 0) return;
@@ -252,8 +259,10 @@ export default function Home() {
     const hasPoint =
       Number.isFinite(parseFloat(p.get("lat") ?? p.get("latitude") ?? "")) &&
       Number.isFinite(parseFloat(p.get("lng") ?? p.get("longitude") ?? ""));
-    if (!hasPoint) useMyLocation(true);
-  }, [cities, useMyLocation]);
+    if (hasPoint) return;
+    const t = setTimeout(() => locateMe(true), 0);
+    return () => clearTimeout(t);
+  }, [cities, locateMe]);
 
   // Mobile bottom sheet with iOS-style snap: PEEK (map dominant, data peeking) <-> FULL
   // (data over the map). The grabber follows the finger, then snaps on release.
@@ -290,7 +299,7 @@ export default function Home() {
       <SearchBar
         city={city?.slug}
         placeholder="Search a place in India or the US, or paste a Maps link"
-        onUseLocation={() => useMyLocation(false)}
+        onUseLocation={() => locateMe(false)}
         locating={locating}
         onSelect={(found) => {
           setFlyTo({ lat: found.latitude, lng: found.longitude });
@@ -394,6 +403,7 @@ export default function Home() {
           {tab === "docs" && (
             <div className="mt-3 space-y-3">
               <DocumentUploadPanel
+                region={regionOf(result.latitude, result.longitude, result.city?.slug)}
                 onParsed={(docType, parsed) => setDocResults((prev) => ({ ...prev, [docType]: parsed }))}
               />
               {crossCheck && (

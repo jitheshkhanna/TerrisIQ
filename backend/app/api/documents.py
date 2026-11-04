@@ -28,22 +28,46 @@ from pydantic import BaseModel, Field
 router = APIRouter(prefix="/api/v1/cadastral", tags=["cadastral"])
 
 _MAX_BYTES = 8 * 1024 * 1024  # 8 MB — comfortably within serverless + Gemini inline limits.
-_DOC_TYPES = ("patta", "chitta", "tslr", "ec", "sale_deed", "fmb", "other")
+# Accepted document types by region. Tamil Nadu + pan-India land records and US title docs.
+_DOC_TYPES = ("patta", "chitta", "tslr", "ec", "sale_deed", "fmb",   # Tamil Nadu
+              "7_12", "ekhata",                                       # pan-India
+              "deed", "alta", "plat", "fema_elevation",               # United States
+              "other")
+# US title documents read against a grantor/grantee + APN model, not Patta/survey-number.
+_US_DOC_TYPES = frozenset(("deed", "alta", "plat", "fema_elevation"))
 
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
 GEMINI_URL = ("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent"
               % GEMINI_MODEL)
 
-_EXTRACT_PROMPT = (
-    "You are extracting fields from an Indian land document (Patta/Chitta/TSLR/Encumbrance "
-    "Certificate/Sale Deed/FMB), which may be in Tamil and/or English. Return ONLY a JSON "
-    "object with these keys (use null when a field is not present in the document; never "
-    "guess): district, taluk, village, survey_number, sub_division, old_survey_numbers "
-    "(array), owner_names (array), document_number, execution_date, transaction_value_inr, "
-    "mortgages (array of {created, released}), boundaries ({north, south, east, west}), "
-    "language. Extract strictly from the document."
+_KEYS = (
+    "district, taluk, village, survey_number, sub_division, old_survey_numbers (array), "
+    "owner_names (array), document_number, execution_date, transaction_value_inr, mortgages "
+    "(array of {created, released}), boundaries ({north, south, east, west}), language"
 )
+_EXTRACT_PROMPT_IN = (
+    "You are extracting fields from an Indian land document (Patta/Chitta/TSLR/Encumbrance "
+    "Certificate/Sale Deed/FMB/7-12 extract/e-Khata), which may be in Tamil, Marathi, Kannada "
+    "and/or English. Return ONLY a JSON object with these keys (use null when a field is not "
+    "present; never guess): " + _KEYS + ". Extract strictly from the document."
+)
+# Same JSON shape, mapped to US title vocabulary so the generic schema still fits: the APN /
+# parcel number -> survey_number, grantor+grantee -> owner_names, recorded liens -> mortgages,
+# the instrument/recording number -> document_number, the sale price -> transaction_value_inr.
+_EXTRACT_PROMPT_US = (
+    "You are extracting fields from a US real-property title document (Deed / ALTA survey / "
+    "Plat / FEMA Elevation Certificate). Return ONLY a JSON object with these keys (use null "
+    "when a field is not present; never guess): " + _KEYS + ". Map US terms to this schema: "
+    "put the APN or parcel number in survey_number, the grantor and grantee (or owner) names "
+    "in owner_names, the county/state in district/village, recorded liens or mortgages in "
+    "mortgages, the recording/instrument number in document_number, and the sale price in "
+    "transaction_value_inr. Extract strictly from the document."
+)
+
+
+def _prompt_for(doc_type: str) -> str:
+    return _EXTRACT_PROMPT_US if doc_type in _US_DOC_TYPES else _EXTRACT_PROMPT_IN
 
 
 class DocParseRequest(BaseModel):
@@ -69,14 +93,15 @@ def _pdf_text(data: bytes) -> str:
         return ""
 
 
-def _gemini_fields(data: bytes, mime_type: str) -> Optional[dict]:
+def _gemini_fields(data: bytes, mime_type: str, doc_type: str = "other") -> Optional[dict]:
     """Structured extraction via Gemini vision. Returns the parsed dict, or None on any
-    failure (so the endpoint still returns the pypdf text)."""
+    failure (so the endpoint still returns the pypdf text). The prompt adapts to the
+    document's region so US title docs map to the same schema as Indian land records."""
     payload = {
         "contents": [{"role": "user", "parts": [
             {"inline_data": {"mime_type": mime_type,
                              "data": base64.b64encode(data).decode("ascii")}},
-            {"text": _EXTRACT_PROMPT},
+            {"text": _prompt_for(doc_type)},
         ]}],
         "generationConfig": {"temperature": 0.0, "responseMimeType": "application/json",
                              "maxOutputTokens": 1200},
@@ -114,7 +139,7 @@ def upload_documents(req: DocParseRequest):
     fields, parser, note = None, "text-layer", None
 
     if req.consent and GEMINI_KEY:
-        fields = _gemini_fields(data, req.mime_type)
+        fields = _gemini_fields(data, req.mime_type, doc_type)
         if fields is not None:
             parser = "gemini-vision"
         else:
