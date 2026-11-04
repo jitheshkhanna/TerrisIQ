@@ -20,6 +20,7 @@ type Message = { role: "user" | "assistant" | "note"; text: string };
 
 const SUGGESTIONS = [
   "Explain the biggest risk here",
+  "How much FSI & height can I build here?",
   "Is the water situation a problem?",
   "What should I check before buying?",
 ];
@@ -109,7 +110,7 @@ export default function ChatPanel({ result, onLocation }: Props) {
         {messages.length === 0 && (
           <p className="py-1 text-[14px] leading-relaxed text-[var(--ink-muted)]">
             {result
-              ? "Ask anything about this location's risk, or paste another Google Maps link to check a different place."
+              ? "Ask anything about this location's risk and buildability."
               : "Search a place, drop a pin, or paste a Google Maps link, then ask me anything about its risk."}
           </p>
         )}
@@ -175,7 +176,7 @@ export default function ChatPanel({ result, onLocation }: Props) {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask, or paste a Maps link…"
+          placeholder="Ask about this place…"
           aria-label="Ask about this location"
           className="min-h-[46px] flex-1 rounded-xl border border-[var(--hairline)] bg-[var(--surface)]
                      px-3.5 text-[15px] text-[var(--ink)] placeholder:text-[var(--ink-muted)]

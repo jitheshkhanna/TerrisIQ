@@ -197,8 +197,11 @@ function Details({ result }: { result: RiskResult }) {
   );
 }
 
-export default function ScoreCard({ result, crossCheck }:
-  { result: RiskResult; crossCheck?: CrossCheck | null }) {
+/* `section` lets the page show the summary (verdict + where + CRZ) always, and the detail
+ * (pillars + explanations + evidence) inside a tab, so the mobile sheet stays compact.
+ * Default "all" keeps the card whole for any caller that wants the full thing. */
+export default function ScoreCard({ result, crossCheck, section = "all" }:
+  { result: RiskResult; crossCheck?: CrossCheck | null; section?: "summary" | "detail" | "all" }) {
   const admin = result.administrative;
   const adjusted = result.grade_floor_applied
     ? "Raised: one serious issue"
@@ -206,8 +209,12 @@ export default function ScoreCard({ result, crossCheck }:
       ? "Capped: limited data here"
       : null;
 
+  const showSummary = section === "summary" || section === "all";
+  const showDetail = section === "detail" || section === "all";
+
   return (
     <div className="rise">
+      {showSummary && (<>
       {/* 1. Should I worry? */}
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
@@ -260,9 +267,12 @@ export default function ScoreCard({ result, crossCheck }:
           </div>
         );
       })()}
+      </>)}
 
+      {showDetail && (<>
       {/* 2. About what? */}
-      <div className="mt-3 divide-y divide-[var(--hairline)] border-t border-[var(--hairline)]">
+      <div className={`${showSummary ? "mt-3 border-t border-[var(--hairline)]" : ""}
+                       divide-y divide-[var(--hairline)]`}>
         <Row kind="flood" title="Flooding" block={result.flood} />
         <Row kind="contamination" title="Water pollution" block={result.contamination} />
         <Row kind="scarcity" title="Water shortage" block={result.scarcity} />
@@ -273,6 +283,7 @@ export default function ScoreCard({ result, crossCheck }:
 
       {/* 4. Engineering, cadastral & underwriting evidence — units + sources + live scenes */}
       <EvidenceDrawer result={result} crossCheck={crossCheck} />
+      </>)}
     </div>
   );
 }

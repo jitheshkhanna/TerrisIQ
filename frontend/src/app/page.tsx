@@ -87,10 +87,23 @@ export default function Home() {
   const [locating, setLocating] = useState(false);
   // Parsed cadastral documents, keyed by type, so a Patta + an EC accumulate and cross-check.
   const [docResults, setDocResults] = useState<Partial<Record<DocType, DocParseResult>>>({});
+  // Which panel of the result sheet is showing. Keeps the mobile sheet compact. `tabKey`
+  // tracks the location a tab choice belongs to, so a new point resets to Risk (see below).
+  const [tab, setTab] = useState<"risk" | "build" | "docs">("risk");
+  const [tabKey, setTabKey] = useState<string | undefined>(undefined);
   // Ensures the ?lat&lng deep link (opened from the browser extension) scores only once.
   const deepLinkRef = useRef(false);
 
   const crossCheck = useMemo(() => crossVerifyDocuments(docResults), [docResults]);
+
+  // A survey number extracted from an uploaded document, badged on Build Scope.
+  const surveyBadge = useMemo(() => {
+    for (const k of Object.keys(docResults) as DocType[]) {
+      const sv = docResults[k]?.fields?.survey_number;
+      if (sv) return String(sv);
+    }
+    return null;
+  }, [docResults]);
 
   // Carry the scored location into Build Scope: ground elevation (G) and the NOC triggers the
   // spatial engine already knows about (CRZ coast, waterbody, storm drain). Memoised so the
@@ -117,6 +130,13 @@ export default function Home() {
       flags, triggers,
     };
   }, [result]);
+
+  // A freshly scored point should land on Risk & Evidence, not whatever tab was last open.
+  // Reset during render (React's sanctioned pattern) rather than in an effect.
+  if (buildPrefill?.key !== tabKey) {
+    setTabKey(buildPrefill?.key);
+    setTab("risk");
+  }
 
   useEffect(() => {
     listCities()
@@ -322,32 +342,57 @@ export default function Home() {
       )}
 
       {!loading && result && (
-        <div className="card mt-3 p-5">
-          <ScoreCard result={result} crossCheck={crossCheck} />
-        </div>
-      )}
+        <>
+          {/* Primary location-risk summary — always visible above the tabs. */}
+          <div className="card mt-3 p-5">
+            <ScoreCard result={result} section="summary" />
+          </div>
 
-      {!loading && result && (
-        <div className="mt-3">
-          <BuildScopePanel prefill={buildPrefill} />
-        </div>
-      )}
+          {/* Sticky segmented navigation, so the sheet shows one focused panel at a time. */}
+          <div className="sticky top-0 z-10 mt-3 bg-[var(--plane)] py-1">
+            <div className="flex gap-1 rounded-xl bg-[var(--plane)] p-1 ring-1 ring-[var(--hairline)]">
+              {([["risk", "Risk & Evidence"], ["build", "Build Scope"], ["docs", "Verify Docs"]] as const)
+                .map(([id, label]) => (
+                  <button key={id} onClick={() => setTab(id)} aria-pressed={tab === id}
+                          className={`flex-1 rounded-lg px-2 py-2 text-[13px] font-medium transition ${
+                            tab === id ? "bg-[var(--surface)] text-[var(--ink)] shadow-sm"
+                                       : "text-[var(--ink-muted)] hover:text-[var(--ink-2)]"}`}>
+                    {label}
+                  </button>
+                ))}
+            </div>
+          </div>
 
-      {!loading && result && (
-        <div className="mt-3">
-          <DocumentUploadPanel
-            onParsed={(docType, parsed) => setDocResults((prev) => ({ ...prev, [docType]: parsed }))}
-          />
-        </div>
-      )}
+          {tab === "risk" && (
+            <>
+              <div className="card mt-3 p-5">
+                <ScoreCard result={result} section="detail" crossCheck={crossCheck} />
+              </div>
+              <ChatPanel
+                result={result}
+                onLocation={(lat, lng, label) => {
+                  setFlyTo({ lat, lng, zoom: 15 });
+                  score(lat, lng, label);
+                }}
+              />
+            </>
+          )}
 
-      <ChatPanel
-        result={result}
-        onLocation={(lat, lng, label) => {
-          setFlyTo({ lat, lng, zoom: 15 });
-          score(lat, lng, label);
-        }}
-      />
+          {tab === "build" && (
+            <div className="mt-3">
+              <BuildScopePanel key={buildPrefill?.key} prefill={buildPrefill} surveyBadge={surveyBadge} />
+            </div>
+          )}
+
+          {tab === "docs" && (
+            <div className="mt-3">
+              <DocumentUploadPanel
+                onParsed={(docType, parsed) => setDocResults((prev) => ({ ...prev, [docType]: parsed }))}
+              />
+            </div>
+          )}
+        </>
+      )}
 
       <footer className="mt-3 px-1 pb-2 text-[12px] leading-relaxed text-[var(--ink-muted)]">
         <p>Screening only. Verify before you buy.</p>
@@ -434,7 +479,8 @@ export default function Home() {
       {/* Map-layers control, top-right, open by default. Hidden for US points: those hazard
           layers are Chennai's, with no US equivalent (FEMA is a point lookup, not a tile). */}
       {city?.slug !== "us" && (
-        <div className="absolute right-4 top-4 z-30 flex flex-col items-end gap-2 lg:right-6 lg:top-5">
+        <div className={`absolute right-4 top-4 z-30 flex-col items-end gap-2 lg:right-6 lg:top-5
+                         lg:flex ${sheetExpanded ? "hidden" : "flex"}`}>
           <button
             onClick={() => setShowViews(!showViews)}
             aria-expanded={showViews}
