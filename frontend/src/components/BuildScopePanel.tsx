@@ -155,7 +155,9 @@ function Results({ s, input }: { s: BuildScope; input: BuildScopeInput }) {
 }
 
 export default function BuildScopePanel(
-  { prefill, surveyBadge }: { prefill?: BuildScopePrefill; surveyBadge?: string | null },
+  { prefill, surveyBadge, onInput }:
+  { prefill?: BuildScopePrefill; surveyBadge?: string | null;
+    onInput?: (input: BuildScopeInput) => void },
 ) {
   const [use, setUse] = useState<BuildUse>("residential");
   const [unit, setUnit] = useState<AreaUnit>("sqft");
@@ -193,10 +195,11 @@ export default function BuildScopePanel(
         const res = await buildScope(input);
         setResult(res.scope);
         setLastInput(input);
+        onInput?.(input);  // hand the validated input up so the PDF report matches the screen
       } catch { /* keep the last good result */ }
     }, 300);
     return () => { if (timer.current) clearTimeout(timer.current); };
-  }, [input]);
+  }, [input, onInput]);
 
   // Status chips summarising what the scored location contributed.
   const groundNum = num(ground);

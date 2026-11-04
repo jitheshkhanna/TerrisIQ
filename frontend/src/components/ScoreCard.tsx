@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { type CrossCheck, type Fact, type RiskResult, type RiskScore } from "@/lib/api";
+import { type Fact, type RiskResult, type RiskScore } from "@/lib/api";
 import { gradeFill, gradeText, gradeTrack } from "@/lib/design";
-import EvidenceDrawer from "@/components/EvidenceDrawer";
 
 /* The card answers three questions in the order people ask them:
  *   1. Should I worry?        -> one verdict word and a 5-step meter
@@ -198,10 +197,10 @@ function Details({ result }: { result: RiskResult }) {
 }
 
 /* `section` lets the page show the summary (verdict + where + CRZ) always, and the detail
- * (pillars + explanations + evidence) inside a tab, so the mobile sheet stays compact.
+ * (pillars + explanations) inside a tab, so the mobile sheet stays compact.
  * Default "all" keeps the card whole for any caller that wants the full thing. */
-export default function ScoreCard({ result, crossCheck, section = "all" }:
-  { result: RiskResult; crossCheck?: CrossCheck | null; section?: "summary" | "detail" | "all" }) {
+export default function ScoreCard({ result, section = "all" }:
+  { result: RiskResult; section?: "summary" | "detail" | "all" }) {
   const admin = result.administrative;
   const adjusted = result.grade_floor_applied
     ? "Raised: one serious issue"
@@ -280,9 +279,6 @@ export default function ScoreCard({ result, crossCheck, section = "all" }:
 
       {/* 3. Everything else, on request */}
       <Details result={result} />
-
-      {/* 4. Engineering, cadastral & underwriting evidence — units + sources + live scenes */}
-      <EvidenceDrawer result={result} crossCheck={crossCheck} />
       </>)}
     </div>
   );
