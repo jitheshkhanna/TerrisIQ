@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { parseDocument, type DocFields, type DocParseResult, type DocType } from "@/lib/api";
+import { parseDocument, type DocFields, type DocParseResult, type DocType, type Region } from "@/lib/api";
 
 /* Consented Patta / EC / FMB upload. The user drops their own land document, ticks an explicit
  * consent box, and sees the extracted title fields. Privacy is front and centre: parsing uses
@@ -9,14 +9,32 @@ import { parseDocument, type DocFields, type DocParseResult, type DocType } from
  * says so. The backend stores nothing; see api/documents.py.
  */
 
-const DOC_TYPES: { id: DocType; label: string }[] = [
-  { id: "patta", label: "Patta / Chitta" },
-  { id: "ec", label: "Encumbrance Cert." },
-  { id: "sale_deed", label: "Sale deed" },
-  { id: "tslr", label: "TSLR" },
-  { id: "fmb", label: "FMB sketch" },
-  { id: "other", label: "Other" },
-];
+// Document types a user is likely to hold, by region. Tamil Nadu land records, pan-India
+// records (7/12 extract, e-Khata), and US title documents.
+const DOC_TYPES_BY_REGION: Record<Region, { id: DocType; label: string }[]> = {
+  tamil_nadu: [
+    { id: "patta", label: "Patta / Chitta" },
+    { id: "ec", label: "Encumbrance Cert." },
+    { id: "sale_deed", label: "Sale deed" },
+    { id: "tslr", label: "TSLR" },
+    { id: "fmb", label: "FMB sketch" },
+    { id: "other", label: "Other" },
+  ],
+  india: [
+    { id: "7_12", label: "7/12 extract" },
+    { id: "ekhata", label: "e-Khata" },
+    { id: "ec", label: "Encumbrance Cert." },
+    { id: "sale_deed", label: "Sale deed" },
+    { id: "other", label: "Other" },
+  ],
+  us: [
+    { id: "deed", label: "Deed" },
+    { id: "alta", label: "ALTA survey" },
+    { id: "plat", label: "Plat map" },
+    { id: "fema_elevation", label: "FEMA Elevation Cert." },
+    { id: "other", label: "Other" },
+  ],
+};
 
 const MAX_MB = 8;
 
@@ -69,9 +87,11 @@ function Extracted({ fields }: { fields: DocFields }) {
 }
 
 export default function DocumentUploadPanel(
-  { onParsed }: { onParsed?: (docType: DocType, result: DocParseResult) => void } = {},
+  { onParsed, region = "tamil_nadu" }:
+  { onParsed?: (docType: DocType, result: DocParseResult) => void; region?: Region } = {},
 ) {
-  const [docType, setDocType] = useState<DocType>("patta");
+  const DOC_TYPES = DOC_TYPES_BY_REGION[region];
+  const [docType, setDocType] = useState<DocType>(() => DOC_TYPES[0].id);
   const [file, setFile] = useState<File | null>(null);
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);

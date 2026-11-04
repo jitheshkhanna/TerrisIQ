@@ -4,6 +4,23 @@
 export type Confidence = "high" | "medium" | "low";
 export type CityDepth = "deep" | "moderate" | "baseline";
 
+/** Which development-control regime governs a point. Mirrors the backend resolver so the UI
+ *  can label jurisdiction, pick customary units and region-aware doc types before (and in
+ *  step with) a Build Scope call. The Build Scope response's `jurisdiction.code` is
+ *  authoritative; this is the instant client-side estimate. */
+export type Region = "tamil_nadu" | "india" | "us";
+
+export function regionOf(lat: number, lng: number, citySlug?: string | null): Region {
+  if (citySlug === "us") return "us";
+  const inUs =
+    (lat >= 24 && lat <= 49.5 && lng >= -125 && lng <= -66.5) || // CONUS
+    (lat >= 51 && lat <= 71.5 && lng >= -170 && lng <= -129) ||  // Alaska
+    (lat >= 18 && lat <= 23 && lng >= -161 && lng <= -154);      // Hawaii
+  if (inUs) return "us";
+  if (lat >= 8 && lat <= 13.6 && lng >= 76.2 && lng <= 80.4) return "tamil_nadu";
+  return "india";
+}
+
 export interface City {
   slug: string;
   name: string;
@@ -354,20 +371,39 @@ export interface BuildScopeInput {
   ground_elev_amsl_m?: number | null;
   haca_cap_m?: number | null;
   flags?: Record<string, boolean>;
+  /** The plot point — lets the backend derive jurisdiction and the airport NOC. */
+  latitude?: number | null;
+  longitude?: number | null;
+  /** tamil_nadu | india | us; derived from the point when omitted. */
+  jurisdiction?: Region | null;
+  /** The plot's local FSI/FAR from its DCR/zoning; required to size floor area outside TN. */
+  fsi_override?: number | null;
 }
 
 export interface Noc { authority: string; required: boolean; reason: string }
 
+/** The plot area in every customary unit, from the backend. */
+export interface AreaInUnits {
+  sqm: number; sqft: number; sq_yd: number; cents: number; grounds: number; acres: number;
+}
+
 export interface BuildScope {
-  fsi: { normal: number; premium_added: number; max_with_premium: number; basis: string };
+  jurisdiction: { code: Region; label: string; authority: string };
+  area_in_units: AreaInUnits;
+  // FSI/FAR is null outside Tamil Nadu until a local value is supplied (never invented).
+  fsi: {
+    term: string; normal: number | null; premium_added: number | null;
+    max_with_premium: number | null; needs_local_value: boolean; basis: string;
+  };
   ground_coverage: { fraction: number; max_footprint_sqm: number; basis: string };
-  built_up_area_sqm: { at_normal_fsi: number; at_premium_fsi: number };
+  built_up_area_sqm: { at_normal_fsi: number | null; at_premium_fsi: number | null };
   setbacks: { regime: string; front_m: number; side1_m: number; side2_m: number; rear_m: number; basis: string };
   osr: { required: boolean; area_sqm: number; basis: string };
-  parking: { car_equivalent_spaces: number; basis: string };
+  parking: { car_equivalent_spaces: number | null; basis: string };
   height: {
     aai_net_permissible_agl_m: number | null; haca_cap_m: number | null;
-    net_permissible_m: number | null; constrained_by: string | null; basis: string;
+    net_permissible_m: number | null; constrained_by: string | null;
+    authority: string; basis: string;
   };
   yield: { approx_dwelling_units: number | null; dwelling_sqm_assumed: number | null };
   noc_checklist: Noc[];
@@ -406,15 +442,6 @@ export async function downloadLayout(input: BuildScopeInput, format: "dxf" | "ge
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
-}
-
-export interface UlpinResult {
-  ulpin: string; valid_format: boolean; resolved: boolean; message: string; next_step: string;
-}
-
-export async function ulpinLookup(code: string): Promise<UlpinResult> {
-  const res = await fetch(`/api/v1/cadastral/ulpin/${encodeURIComponent(code)}`);
-  return asJson<UlpinResult>(res);
 }
 
 // --- Evidence: real satellite scene provenance (STAC over HTTP) ---------------------------
@@ -464,7 +491,14 @@ export interface DocParseResult {
   disclaimer: string;
 }
 
-export type DocType = "patta" | "chitta" | "tslr" | "ec" | "sale_deed" | "fmb" | "other";
+export type DocType =
+  // Tamil Nadu
+  | "patta" | "chitta" | "tslr" | "ec" | "sale_deed" | "fmb"
+  // Pan-India
+  | "7_12" | "ekhata"
+  // United States
+  | "deed" | "alta" | "plat" | "fema_elevation"
+  | "other";
 
 /** Read a File as base64 (no data: prefix), for the JSON upload body. */
 function fileToBase64(file: File): Promise<string> {
