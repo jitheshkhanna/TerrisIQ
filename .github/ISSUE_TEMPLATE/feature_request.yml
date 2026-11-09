@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest a capability, a new risk layer, or a coverage expansion.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What can't you do today? Who is it for (buyer, builder, underwriter)?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should it do? Keep it focused.
+    validations:
+      required: true
+  - type: input
+    id: data-source
+    attributes:
+      label: Data source (for a new risk layer or city)
+      description: |
+        Name the dataset and its license. Per our guardrails, it must be open-licensed
+        or accessed under an authorized API — no scraping of restricted portals.
+    validations:
+      required: false
+  - type: checkboxes
+    id: guardrails
+    attributes:
+      label: Guardrails
+      options:
+        - label: This does not require scraping a restricted government portal.
+          required: true
+        - label: Any new data has a confirmed open license or authorized API access.
+          required: true

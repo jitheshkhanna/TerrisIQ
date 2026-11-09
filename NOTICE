@@ -1,0 +1,25 @@
+TerrisIQ
+Copyright 2026 TerrisIQ contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+------------------------------------------------------------------------------
+Data notice
+------------------------------------------------------------------------------
+The Apache-2.0 license above covers the SOURCE CODE in this repository. It does
+NOT relicense the third-party datasets the application reads or bundles. Each
+dataset remains under its own upstream terms. Before redistributing any derived
+data, confirm the upstream license.
+
+Datasets and their sources are listed in the README ("Data sources") and include,
+among others:
+  - Greater Chennai Corporation (GCC) flood inundation and storm-water drain layers
+  - CPCB (Central Pollution Control Board) critically polluted area / CEPI data
+  - CGWB (Central Ground Water Board) groundwater assessment data
+  - AAI (Airports Authority of India) reference data
+  - OpenStreetMap contributors (waterbodies, industrial land use, coastline) — ODbL
+  - FEMA National Flood Hazard Layer and EPA ECHO (United States, public domain)
+
+The GPL-3.0 geodetic/InSAR tools named in the architecture (MintPy, PyAPS, PySolid)
+are NOT part of this repository and are never imported or bundled by it. They are
+reserved for an isolated, out-of-process Phase B worker. See CLAUDE.md.

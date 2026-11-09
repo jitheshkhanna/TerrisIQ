@@ -1,0 +1,46 @@
+name: Bug report
+description: Something is broken, or a risk score looks wrong.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for the report. The more precise the input, the faster we can reproduce it.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you see, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: |
+        Exact input. For a risk score, include the coordinates or the address searched,
+        and the source you're checking the score against.
+      placeholder: |
+        1. POST /api/v1/risk with {"latitude":12.9783,"longitude":80.2209}
+        2. Grade returned was ... ; I expected ... because ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Backend / risk engine
+        - Frontend / map UI
+        - Build Scope calculator
+        - Document upload / parsing
+        - Data coverage
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Browser/OS for UI bugs; Python/Node version and commit SHA for local runs.
+    validations:
+      required: false

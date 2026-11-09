@@ -14,17 +14,16 @@ __pycache__/
 # Vercel
 .vercel/
 
-# Env / secrets
+# Env / secrets (but keep the committed *.example templates)
 .env
 .env.*
+!**/.env.example
+!**/.env.local.example
 *.pem
 *.key
 
 # Heavy GIS data (kept out of git; backend runs on Vercel)
 backend/data/
-
-# Generated marketing video output
-extension/brag-output/
 
 # Leftover nested git dir (create-next-app scaffold), moved aside
 frontend/.git.disabled/

@@ -1,15 +1,29 @@
-# Property Risk Analyser
+# TerrisIQ
 
-Parcel-level environmental risk screening for India's tier-1 cities. Drop a pin or search
-an address and get three scores — monsoon flood, groundwater contamination, summer water
-scarcity — a composite letter grade, and a three-page PDF due diligence report.
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![CI](https://github.com/jitheshkhanna/TerrisIQ/actions/workflows/ci.yml/badge.svg)](https://github.com/jitheshkhanna/TerrisIQ/actions/workflows/ci.yml)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
+Parcel-level property and climate-risk screening. Drop a pin or search an address and get
+risk scores — monsoon flood, groundwater contamination, summer water scarcity — a composite
+letter grade, and a PDF due-diligence report. Every number shows its units and cites its
+source; thin or missing data is labelled by confidence, never presented as "safe".
 
 Indian property documents (patta, chitta, encumbrance certificates) verify ownership and
 liens. They say nothing about whether the plot sits on a former lake bed, inside a
 critically polluted industrial cluster, or in an overexploited groundwater block. This
 fills that gap from open data.
 
-**Live:** https://chennai-terra-risk.vercel.app
+> **New here?** Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR — it covers
+> local setup and the non-negotiable guardrails (no scraping restricted portals, a source
+> for every number, keys in env only).
+
+Indian property documents (patta, chitta, encumbrance certificates) verify ownership and
+liens. They say nothing about whether the plot sits on a former lake bed, inside a
+critically polluted industrial cluster, or in an overexploited groundwater block. This
+fills that gap from open data.
+
+**Live:** https://www.terrisiq.com
 
 Worked examples with real output: [USE_CASES.md](USE_CASES.md). QA suites and the bugs
 they caught: [backend/tests/](backend/tests/README.md). &nbsp;·&nbsp; API: https://chennai-terra-risk-api.vercel.app/docs
@@ -441,3 +455,18 @@ published reports.
 > This is a screening tool. It does not constitute a professional environmental
 > assessment. Verify all findings with a physical site visit and consult a qualified
 > surveyor before making purchase decisions.
+
+## Contributing
+
+Contributions are welcome, from a typo to a new risk engine. Start with
+[CONTRIBUTING.md](CONTRIBUTING.md) for local setup, how to run the checks, and the
+guardrails every change must respect. Good first issues are labelled
+[`good first issue`](../../labels/good%20first%20issue). Be kind — see the
+[Code of Conduct](CODE_OF_CONDUCT.md). Found a security problem? See
+[SECURITY.md](SECURITY.md) and report it privately.
+
+## License
+
+Source code is licensed under the [Apache License 2.0](LICENSE). The license covers the
+code only — bundled third-party datasets keep their own upstream terms; see
+[NOTICE](NOTICE) and the Data sources section above.
