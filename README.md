@@ -4,7 +4,8 @@
 [![CI](https://github.com/jitheshkhanna/TerrisIQ/actions/workflows/ci.yml/badge.svg)](https://github.com/jitheshkhanna/TerrisIQ/actions/workflows/ci.yml)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-Parcel-level property and climate-risk screening. Drop a pin or search an address and get
+Parcel-level property and climate-risk screening, nationwide across India and the US, with
+deeper city layers for eight Indian tier-1 cities. Drop a pin or search an address and get
 risk scores — monsoon flood, groundwater contamination, summer water scarcity — a composite
 letter grade, and a PDF due-diligence report. Every number shows its units and cites its
 source; thin or missing data is labelled by confidence, never presented as "safe".
@@ -40,9 +41,19 @@ C  41-60  Moderate Risk
 
 ## Coverage, and why it is uneven
 
-Eight cities are covered. They are **not** equally well served, and the tool says so on
-every score rather than presenting a uniform-looking grade over wildly different
-evidence.
+**Coverage is nationwide** — every point in India and in all 50 US states returns a cited
+read — but the *confidence* is deliberately uneven, and the tool says so on every score
+rather than presenting a uniform-looking grade over wildly different evidence. Every point
+reports which tier it earned: **DEEP** (a surveyed statutory/federal polygon), **MODERATE**
+(a match against a cited national dataset), or **BASELINE** (terrain physics + live
+OpenStreetMap hydrology, which works anywhere). The full tier breakdown is in
+[COVERAGE.md](COVERAGE.md).
+
+In India, **eight tier-1 cities** — Chennai, Mumbai, Delhi, Bengaluru, Hyderabad, Kolkata,
+Pune and Ahmedabad — carry extra city-registry layers on top of the baseline; **Chennai is
+the only validated flood survey (DEEP).** Everywhere else in India falls through to the
+universal baseline, lifted to MODERATE wherever the bundled national index (CPCB / CGWB /
+AAI) matches. The table below is the depth of those eight:
 
 | City | Depth | What actually backs the flood score | Groundwater |
 |---|---|---|---|
